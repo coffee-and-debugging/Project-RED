@@ -1,7 +1,31 @@
 from django.db import models
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.core.validators import MinValueValidator, MaxValueValidator
 import uuid
+
+class CustomUserManager(BaseUserManager):
+    def create_user(self, username, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError('The Email field must be set')
+        email = self.normalize_email(email)
+        user = self.model(username=username, email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, username, email, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_active', True)
+        
+        # Set default values for our custom required fields
+        extra_fields.setdefault('blood_group', 'O+')
+        extra_fields.setdefault('age', 30)
+        extra_fields.setdefault('gender', 'O')
+        extra_fields.setdefault('address', 'Admin Address')
+        extra_fields.setdefault('phone_number', '+0000000000')
+        
+        return self.create_user(username, email, password, **extra_fields)
 
 class User(AbstractUser):
     BLOOD_GROUPS = [
@@ -22,17 +46,19 @@ class User(AbstractUser):
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    blood_group = models.CharField(max_length=3, choices=BLOOD_GROUPS)
+    blood_group = models.CharField(max_length=3, choices=BLOOD_GROUPS, blank=True, null=True)
     allergies = models.TextField(blank=True, null=True)
-    age = models.PositiveIntegerField(validators=[MinValueValidator(18), MaxValueValidator(65)])
-    gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
-    address = models.TextField()
-    phone_number = models.CharField(max_length=15)
+    age = models.PositiveIntegerField(validators=[MinValueValidator(18), MaxValueValidator(65)], blank=True, null=True)
+    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True, null=True)
+    address = models.TextField(blank=True, null=True)
+    phone_number = models.CharField(max_length=15, blank=True, null=True)
     is_donor = models.BooleanField(default=True)
     is_recipient = models.BooleanField(default=True)
     location_lat = models.FloatField(blank=True, null=True)
     location_long = models.FloatField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    objects = CustomUserManager()
     
     def __str__(self):
         return f"{self.username} - {self.blood_group}"

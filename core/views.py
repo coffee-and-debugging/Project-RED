@@ -15,17 +15,40 @@ import requests
 from django.conf import settings
 import json
 from math import radians, sin, cos, sqrt, atan2
+from rest_framework import status, viewsets, permissions
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.contrib.auth import login, logout
+from django.middleware.csrf import get_token
+from django.db.models import Q
+from django.utils import timezone
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class AuthViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
+    
+    @action(detail=False, methods=['get'])
+    def csrf(self, request):
+        # Get CSRF token
+        return Response({'csrfToken': get_token(request)})
     
     @action(detail=False, methods=['post'])
     def register(self, request):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+            
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            
             return Response({
                 'user': UserSerializer(user).data,
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
                 'message': 'User created successfully'
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -35,17 +58,27 @@ class AuthViewSet(viewsets.ViewSet):
         serializer = UserLoginSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
-            login(request, user)
+            
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            
             return Response({
                 'user': UserSerializer(user).data,
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
                 'message': 'Login successful'
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['post'])
     def logout(self, request):
-        logout(request)
+        # For JWT, we don't need server-side logout, but we can blacklist the token if needed
+        # For now, just return success message
         return Response({'message': 'Logout successful'})
+
+# Add JWT token obtain view
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = TokenObtainPairSerializer
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -68,7 +101,7 @@ class UserViewSet(viewsets.ModelViewSet):
         
         if not user_lat or not user_lng:
             return Response({'error': 'Latitude and longitude parameters are required'}, 
-                           status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_400_BAD_REQUEST)
         
         try:
             user_lat = float(user_lat)
@@ -76,24 +109,26 @@ class UserViewSet(viewsets.ModelViewSet):
             max_distance = float(max_distance)
         except ValueError:
             return Response({'error': 'Invalid coordinate values'}, 
-                           status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_400_BAD_REQUEST)
         
         # Filter donors by blood group if provided
-        donors = User.objects.filter(is_donor=True)
+        donors = User.objects.filter(is_donor=True, location_lat__isnull=False, location_long__isnull=False)
         if blood_group:
             donors = donors.filter(blood_group=blood_group)
+        
+        # Exclude the current user from results
+        donors = donors.exclude(id=request.user.id)
         
         # Calculate distance for each donor and filter by max distance
         nearby_donors = []
         for donor in donors:
-            if donor.location_lat and donor.location_long:
-                distance = self.calculate_distance(
-                    user_lat, user_lng, donor.location_lat, donor.location_long
-                )
-                if distance <= max_distance:
-                    donor_data = UserSerializer(donor).data
-                    donor_data['distance'] = distance
-                    nearby_donors.append(donor_data)
+            distance = self.calculate_distance(
+                user_lat, user_lng, donor.location_lat, donor.location_long
+            )
+            if distance <= max_distance:
+                donor_data = UserSerializer(donor).data
+                donor_data['distance'] = round(distance, 2)
+                nearby_donors.append(donor_data)
         
         return Response(nearby_donors)
     
@@ -117,7 +152,14 @@ class UserViewSet(viewsets.ModelViewSet):
 class HospitalViewSet(viewsets.ModelViewSet):
     queryset = Hospital.objects.all()
     serializer_class = HospitalSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]  # Changed to AllowAny for registration
+    
+    def get_permissions(self):
+        # Allow anyone to create hospitals (register)
+        if self.action == 'create':
+            return [AllowAny()]
+        # Only authenticated users can list/view hospitals
+        return [IsAuthenticated()]
     
     @action(detail=False, methods=['get'])
     def nearby_hospitals(self, request):
@@ -148,7 +190,7 @@ class HospitalViewSet(viewsets.ModelViewSet):
             )
             if distance <= max_distance:
                 hospital_data = HospitalSerializer(hospital).data
-                hospital_data['distance'] = distance
+                hospital_data['distance'] = round(distance, 2)
                 nearby_hospitals.append(hospital_data)
         
         # Sort by distance
@@ -198,23 +240,24 @@ class BloodRequestViewSet(viewsets.ModelViewSet):
             blood_group=blood_request.blood_group,
             location_lat__isnull=False,
             location_long__isnull=False
-        )
+        ).exclude(id=self.request.user.id)  # Exclude the patient themselves
         
         # Create notifications for nearby donors
         for donor in donors:
-            distance = self.calculate_distance(
-                blood_request.location_lat, blood_request.location_long,
-                donor.location_lat, donor.location_long
-            )
-            
-            if distance <= 50:  # Within 50km
-                Notification.objects.create(
-                    user=donor,
-                    notification_type='blood_request',
-                    title='Blood Request Nearby',
-                    message=f'A patient nearby needs {blood_request.blood_group} blood. Can you help?',
-                    related_id=blood_request.id
+            if donor.location_lat and donor.location_long:
+                distance = self.calculate_distance(
+                    blood_request.location_lat, blood_request.location_long,
+                    donor.location_lat, donor.location_long
                 )
+                
+                if distance <= 50:  # Within 50km
+                    Notification.objects.create(
+                        user=donor,
+                        notification_type='blood_request',
+                        title='Blood Request Nearby',
+                        message=f'A patient nearby needs {blood_request.blood_group} blood. Can you help?',
+                        related_id=blood_request.id
+                    )
     
     def calculate_distance(self, lat1, lng1, lat2, lng2):
         # Haversine formula to calculate distance between two coordinates
@@ -247,6 +290,10 @@ class DonationViewSet(viewsets.ModelViewSet):
             Q(donor=self.request.user) | 
             Q(blood_request__patient=self.request.user)
         )
+        
+    def perform_create(self, serializer):
+        # Set the donor to the current user automatically
+        serializer.save(donor=self.request.user)
     
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
@@ -457,7 +504,7 @@ def complete_donation(request, donation_id):
     except Donation.DoesNotExist:
         return Response({'error': 'Donation not found'}, status=status.HTTP_404_NOT_FOUND)
     
-    # Check if user is hospital staff
+    # Check if user is hospital staff or admin
     if not request.user.is_staff:
         return Response({'error': 'Only hospital staff can complete donations'}, 
                        status=status.HTTP_403_FORBIDDEN)
@@ -487,10 +534,11 @@ def complete_donation(request, donation_id):
         )
         
         # Create chat room between donor and patient
-        ChatRoom.objects.create(
+        ChatRoom.objects.get_or_create(
             donor=donation.donor,
             patient=blood_request.patient,
-            donation=donation
+            donation=donation,
+            defaults={'is_active': True}
         )
     
     return Response({'message': 'Donation marked as completed'})

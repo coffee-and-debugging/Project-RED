@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
+from django.contrib.auth.hashers import make_password
 from .models import User, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification
 import requests
 from django.conf import settings
@@ -11,17 +12,28 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'username', 'email', 'password', 'first_name', 'last_name', 
                  'blood_group', 'allergies', 'age', 'gender', 'address', 'phone_number')
-        extra_kwargs = {'password': {'write_only': True}}
+        extra_kwargs = {
+            'password': {'write_only': True},
+            'blood_group': {'required': False},
+            'age': {'required': False},
+            'gender': {'required': False},
+            'address': {'required': False},
+            'phone_number': {'required': False},
+        }
     
     def create(self, validated_data):
-        # Geocode address to get coordinates
+        # Geocode address to get coordinates if address is provided
         address = validated_data.get('address')
         if address:
             lat, lng = self.geocode_address(address)
             validated_data['location_lat'] = lat
             validated_data['location_long'] = lng
         
-        user = User.objects.create_user(**validated_data)
+        # Handle password hashing
+        password = validated_data.pop('password')
+        user = User(**validated_data)
+        user.set_password(password)
+        user.save()
         return user
     
     def geocode_address(self, address):
@@ -90,7 +102,12 @@ class DonationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Donation
         fields = '__all__'
+        read_only_fields = ('donor', 'hospital', 'status')  # Add this line
 
+    def create(self, validated_data):
+        # Set the donor to the current user
+        validated_data['donor'] = self.context['request'].user
+        return super().create(validated_data)
 class BloodTestSerializer(serializers.ModelSerializer):
     donor_name = serializers.CharField(source='donation.donor.get_full_name', read_only=True)
     

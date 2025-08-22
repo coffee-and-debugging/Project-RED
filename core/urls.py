@@ -3,8 +3,9 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AuthViewSet, UserViewSet, HospitalViewSet, BloodRequestViewSet,
     DonationViewSet, BloodTestViewSet, ChatRoomViewSet, NotificationViewSet,
-    complete_donation
+    complete_donation, CustomTokenObtainPairView
 )
+from rest_framework_simplejwt.views import TokenRefreshView
 
 router = DefaultRouter()
 router.register(r'auth', AuthViewSet, basename='auth')
@@ -19,4 +20,7 @@ router.register(r'notifications', NotificationViewSet, basename='notification')
 urlpatterns = [
     path('', include(router.urls)),
     path('complete-donation/<uuid:donation_id>/', complete_donation, name='complete-donation'),
+    # JWT endpoints
+    path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
