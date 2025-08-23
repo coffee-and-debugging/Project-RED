@@ -3,6 +3,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import login, logout
+from django.middleware.csrf import get_token
 from django.db.models import Q
 from django.utils import timezone
 from .models import User, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification
@@ -15,16 +16,7 @@ import requests
 from django.conf import settings
 import json
 from math import radians, sin, cos, sqrt, atan2
-from rest_framework import status, viewsets, permissions
-from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.contrib.auth import login, logout
-from django.middleware.csrf import get_token
-from django.db.models import Q
-from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -33,7 +25,6 @@ class AuthViewSet(viewsets.ViewSet):
     
     @action(detail=False, methods=['get'])
     def csrf(self, request):
-        # Get CSRF token
         return Response({'csrfToken': get_token(request)})
     
     @action(detail=False, methods=['post'])
@@ -41,10 +32,7 @@ class AuthViewSet(viewsets.ViewSet):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            
-            # Generate JWT tokens
             refresh = RefreshToken.for_user(user)
-            
             return Response({
                 'user': UserSerializer(user).data,
                 'refresh': str(refresh),
@@ -58,10 +46,7 @@ class AuthViewSet(viewsets.ViewSet):
         serializer = UserLoginSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
-            
-            # Generate JWT tokens
             refresh = RefreshToken.for_user(user)
-            
             return Response({
                 'user': UserSerializer(user).data,
                 'refresh': str(refresh),
@@ -72,11 +57,8 @@ class AuthViewSet(viewsets.ViewSet):
     
     @action(detail=False, methods=['post'])
     def logout(self, request):
-        # For JWT, we don't need server-side logout, but we can blacklist the token if needed
-        # For now, just return success message
         return Response({'message': 'Logout successful'})
 
-# Add JWT token obtain view
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = TokenObtainPairSerializer
 
@@ -91,13 +73,29 @@ class UserViewSet(viewsets.ModelViewSet):
             return User.objects.all()
         return User.objects.filter(id=self.request.user.id)
     
+    def update(self, request, *args, **kwargs):
+        # Allow partial updates for location
+        partial = kwargs.pop('partial', True)
+        instance = self.get_object()
+        
+        # Check if user is updating their own profile or is staff
+        if instance != request.user and not request.user.is_staff:
+            return Response({'error': 'You can only update your own profile'}, 
+                           status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+    
+    # ... rest of the UserViewSet code ...
+    
     @action(detail=False, methods=['get'])
     def nearby_donors(self, request):
-        # Get user's location
         user_lat = request.query_params.get('lat')
         user_lng = request.query_params.get('lng')
         blood_group = request.query_params.get('blood_group')
-        max_distance = request.query_params.get('max_distance', 50)  # Default 50km
+        max_distance = request.query_params.get('max_distance', 50)
         
         if not user_lat or not user_lng:
             return Response({'error': 'Latitude and longitude parameters are required'}, 
@@ -111,15 +109,12 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Invalid coordinate values'}, 
                         status=status.HTTP_400_BAD_REQUEST)
         
-        # Filter donors by blood group if provided
         donors = User.objects.filter(is_donor=True, location_lat__isnull=False, location_long__isnull=False)
         if blood_group:
             donors = donors.filter(blood_group=blood_group)
         
-        # Exclude the current user from results
         donors = donors.exclude(id=request.user.id)
         
-        # Calculate distance for each donor and filter by max distance
         nearby_donors = []
         for donor in donors:
             distance = self.calculate_distance(
@@ -133,40 +128,32 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(nearby_donors)
     
     def calculate_distance(self, lat1, lng1, lat2, lng2):
-        # Haversine formula to calculate distance between two coordinates
-        R = 6371  # Earth's radius in kilometers
-        
+        R = 6371
         lat1_rad = radians(lat1)
         lng1_rad = radians(lng1)
         lat2_rad = radians(lat2)
         lng2_rad = radians(lng2)
-        
         dlat = lat2_rad - lat1_rad
         dlng = lng2_rad - lng1_rad
-        
         a = sin(dlat/2)**2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlng/2)**2
         c = 2 * atan2(sqrt(a), sqrt(1-a))
-        
         return R * c
 
 class HospitalViewSet(viewsets.ModelViewSet):
     queryset = Hospital.objects.all()
     serializer_class = HospitalSerializer
-    permission_classes = [AllowAny]  # Changed to AllowAny for registration
+    permission_classes = [AllowAny]
     
     def get_permissions(self):
-        # Allow anyone to create hospitals (register)
         if self.action == 'create':
             return [AllowAny()]
-        # Only authenticated users can list/view hospitals
         return [IsAuthenticated()]
     
     @action(detail=False, methods=['get'])
     def nearby_hospitals(self, request):
-        # Get user's location
         user_lat = request.query_params.get('lat')
         user_lng = request.query_params.get('lng')
-        max_distance = request.query_params.get('max_distance', 50)  # Default 50km
+        max_distance = request.query_params.get('max_distance', 50)
         
         if not user_lat or not user_lng:
             return Response({'error': 'Latitude and longitude parameters are required'}, 
@@ -180,7 +167,6 @@ class HospitalViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Invalid coordinate values'}, 
                            status=status.HTTP_400_BAD_REQUEST)
         
-        # Calculate distance for each hospital and filter by max distance
         hospitals = Hospital.objects.all()
         nearby_hospitals = []
         
@@ -193,26 +179,19 @@ class HospitalViewSet(viewsets.ModelViewSet):
                 hospital_data['distance'] = round(distance, 2)
                 nearby_hospitals.append(hospital_data)
         
-        # Sort by distance
         nearby_hospitals.sort(key=lambda x: x['distance'])
-        
         return Response(nearby_hospitals)
     
     def calculate_distance(self, lat1, lng1, lat2, lng2):
-        # Haversine formula to calculate distance between two coordinates
-        R = 6371  # Earth's radius in kilometers
-        
+        R = 6371
         lat1_rad = radians(lat1)
         lng1_rad = radians(lng1)
         lat2_rad = radians(lat2)
         lng2_rad = radians(lng2)
-        
         dlat = lat2_rad - lat1_rad
         dlng = lng2_rad - lng1_rad
-        
         a = sin(dlat/2)**2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlng/2)**2
         c = 2 * atan2(sqrt(a), sqrt(1-a))
-        
         return R * c
 
 class BloodRequestViewSet(viewsets.ModelViewSet):
@@ -221,36 +200,40 @@ class BloodRequestViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        # Users can only see their own requests or requests they've donated to
         if self.request.user.is_staff:
             return BloodRequest.objects.all()
-        
         return BloodRequest.objects.filter(
             Q(patient=self.request.user) | 
             Q(donations__donor=self.request.user)
         ).distinct()
     
+    def create(self, request, *args, **kwargs):
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
     def perform_create(self, serializer):
-        # Set the patient to the current user
         blood_request = serializer.save(patient=self.request.user)
-        
-        # Find nearby donors with matching blood group
         donors = User.objects.filter(
             is_donor=True,
             blood_group=blood_request.blood_group,
             location_lat__isnull=False,
             location_long__isnull=False
-        ).exclude(id=self.request.user.id)  # Exclude the patient themselves
+        ).exclude(id=self.request.user.id)
         
-        # Create notifications for nearby donors
+        notification_count = 0
         for donor in donors:
             if donor.location_lat and donor.location_long:
                 distance = self.calculate_distance(
                     blood_request.location_lat, blood_request.location_long,
                     donor.location_lat, donor.location_long
                 )
-                
-                if distance <= 50:  # Within 50km
+                if distance <= 50:
                     Notification.objects.create(
                         user=donor,
                         notification_type='blood_request',
@@ -258,23 +241,44 @@ class BloodRequestViewSet(viewsets.ModelViewSet):
                         message=f'A patient nearby needs {blood_request.blood_group} blood. Can you help?',
                         related_id=blood_request.id
                     )
+                    notification_count += 1
+        print(f"Created {notification_count} notifications for blood request {blood_request.id}")
     
     def calculate_distance(self, lat1, lng1, lat2, lng2):
-        # Haversine formula to calculate distance between two coordinates
-        R = 6371  # Earth's radius in kilometers
-        
+        R = 6371
         lat1_rad = radians(lat1)
         lng1_rad = radians(lng1)
         lat2_rad = radians(lat2)
         lng2_rad = radians(lng2)
-        
         dlat = lat2_rad - lat1_rad
         dlng = lng2_rad - lng1_rad
-        
         a = sin(dlat/2)**2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlng/2)**2
         c = 2 * atan2(sqrt(a), sqrt(1-a))
-        
         return R * c
+
+    @action(detail=True, methods=['get'])
+    def find_best_donors(self, request, pk=None):
+        blood_request = self.get_object()
+        potential_donors = User.objects.filter(
+            is_donor=True,
+            blood_group=blood_request.blood_group,
+            location_lat__isnull=False,
+            location_long__isnull=False
+        ).exclude(id=blood_request.patient.id)
+        
+        donors_with_distance = []
+        for donor in potential_donors:
+            distance = self.calculate_distance(
+                blood_request.location_lat, blood_request.location_long,
+                donor.location_lat, donor.location_long
+            )
+            if distance <= 100:
+                donor_data = UserSerializer(donor).data
+                donor_data['distance'] = round(distance, 2)
+                donors_with_distance.append(donor_data)
+        
+        donors_with_distance.sort(key=lambda x: x['distance'])
+        return Response(donors_with_distance)
 
 class DonationViewSet(viewsets.ModelViewSet):
     queryset = Donation.objects.all()
@@ -282,58 +286,100 @@ class DonationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        # Users can only see their own donations
         if self.request.user.is_staff:
             return Donation.objects.all()
-        
         return Donation.objects.filter(
             Q(donor=self.request.user) | 
             Q(blood_request__patient=self.request.user)
         )
         
     def perform_create(self, serializer):
-        # Set the donor to the current user automatically
+        location_lat = self.request.data.get('location_lat')
+        location_long = self.request.data.get('location_long')
+        
+        if location_lat and location_long:
+            donor = self.request.user
+            donor.location_lat = float(location_lat)
+            donor.location_long = float(location_long)
+            donor.save()
+        
         serializer.save(donor=self.request.user)
     
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
-        donation = self.get_object()
-        
-        if donation.donor != request.user:
-            return Response({'error': 'You can only accept your own donations'}, 
-                           status=status.HTTP_403_FORBIDDEN)
-        
-        if donation.status != 'pending':
-            return Response({'error': 'Donation has already been processed'}, 
-                           status=status.HTTP_400_BAD_REQUEST)
-        
-        # Update donation status
-        donation.status = 'scheduled'
-        donation.save()
-        
-        # Find the best hospital for donor and patient
-        best_hospital = self.find_best_hospital(
-            donation.donor.location_lat, donation.donor.location_long,
-            donation.blood_request.location_lat, donation.blood_request.location_long
-        )
-        
-        if best_hospital:
-            donation.hospital = best_hospital
+        try:
+            donation = self.get_object()
+            
+            if donation.donor != request.user:
+                return Response({'error': 'You can only accept your own donations'}, 
+                               status=status.HTTP_403_FORBIDDEN)
+            
+            if donation.status != 'pending':
+                return Response({'error': 'Donation has already been processed'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+            donor_lat = request.data.get('donor_lat')
+            donor_lng = request.data.get('donor_lng')
+            
+            if not donor_lat or not donor_lng:
+                return Response({'error': 'Real-time location coordinates are required'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+            donation.donor.location_lat = float(donor_lat)
+            donation.donor.location_lng = float(donor_lng)
+            donation.donor.save()
+            
+            best_hospital = self.find_best_hospital_with_ai(
+                float(donor_lat), float(donor_lng),
+                donation.blood_request.location_lat, donation.blood_request.location_long
+            )
+            
+            if not best_hospital:
+                best_hospital = self.find_best_hospital(
+                    float(donor_lat), float(donor_lng),
+                    donation.blood_request.location_lat, donation.blood_request.location_long
+                )
+            
+            donation.status = 'scheduled'
+            if best_hospital:
+                donation.hospital = best_hospital
             donation.save()
-        
-        # Create notification for patient
-        Notification.objects.create(
-            user=donation.blood_request.patient,
-            notification_type='donation_accepted',
-            title='Donation Accepted',
-            message=f'{donation.donor.get_full_name()} has accepted your blood request',
-            related_id=donation.id
-        )
-        
-        return Response({'message': 'Donation accepted successfully', 'hospital': HospitalSerializer(best_hospital).data})
+            
+            chat_room, created = ChatRoom.objects.get_or_create(
+                donor=donation.donor,
+                patient=donation.blood_request.patient,
+                donation=donation,
+                defaults={'is_active': True}
+            )
+            
+            Notification.objects.create(
+                user=donation.blood_request.patient,
+                notification_type='donation_accepted',
+                title='Donation Accepted',
+                message=f'{donation.donor.get_full_name()} has accepted your blood request',
+                related_id=donation.id
+            )
+            
+            Notification.objects.create(
+                user=donation.donor,
+                notification_type='donation_accepted',
+                title='Chat Room Created',
+                message=f'You can now chat with {donation.blood_request.patient.get_full_name()} about the donation',
+                related_id=chat_room.id
+            )
+            
+            return Response({
+                'message': 'Donation accepted successfully', 
+                'hospital': HospitalSerializer(best_hospital).data if best_hospital else None,
+                'chat_room_id': chat_room.id
+            })
+            
+        except Donation.DoesNotExist:
+            return Response({'error': 'Donation not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def find_best_hospital(self, donor_lat, donor_lng, patient_lat, patient_lng):
-        # Find the hospital that minimizes the total distance for both donor and patient
         hospitals = Hospital.objects.all()
         best_hospital = None
         min_total_distance = float('inf')
@@ -348,22 +394,94 @@ class DonationViewSet(viewsets.ModelViewSet):
                 best_hospital = hospital
         
         return best_hospital
+
+    def find_best_hospital_with_ai(self, donor_lat, donor_lng, patient_lat, patient_lng):
+        try:
+            hospitals = Hospital.objects.all()
+            if not hospitals:
+                return None
+            
+            hospital_data = []
+            for hospital in hospitals:
+                donor_distance = self.calculate_distance(donor_lat, donor_lng, hospital.location_lat, hospital.location_long)
+                patient_distance = self.calculate_distance(patient_lat, patient_lng, hospital.location_lat, hospital.location_long)
+                
+                hospital_data.append({
+                    'id': str(hospital.id),
+                    'name': hospital.name,
+                    'address': hospital.address,
+                    'donor_distance': round(donor_distance, 2),
+                    'patient_distance': round(patient_distance, 2),
+                    'total_distance': round(donor_distance + patient_distance, 2)
+                })
+            
+            hospital_data.sort(key=lambda x: x['total_distance'])
+            
+            api_key = settings.OPENAI_API_KEY
+            if not api_key:
+                return Hospital.objects.get(id=hospital_data[0]['id'])
+            
+            headers = {
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            prompt = f"""
+            Analyze these hospitals and select the best one for a blood donation scenario:
+            
+            Donor Location: {donor_lat}, {donor_lng}
+            Patient Location: {patient_lat}, {patient_lng}
+            
+            Available Hospitals:
+            {json.dumps(hospital_data, indent=2)}
+            
+            Consider factors like:
+            1. Total travel distance (donor + patient)
+            2. Balance between donor and patient convenience
+            3. Hospital capacity and facilities
+            4. Traffic conditions (assume current time)
+            
+            Return ONLY the hospital ID of the best choice.
+            """
+            
+            data = {
+                'model': 'gpt-3.5-turbo',
+                'messages': [{'role': 'user', 'content': prompt}],
+                'max_tokens': 50,
+                'temperature': 0.1
+            }
+            
+            response = requests.post(
+                'https://api.openai.com/v1/chat/completions',
+                headers=headers,
+                data=json.dumps(data),
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                hospital_id = result['choices'][0]['message']['content'].strip()
+                try:
+                    return Hospital.objects.get(id=hospital_id)
+                except (Hospital.DoesNotExist, ValueError):
+                    return Hospital.objects.get(id=hospital_data[0]['id'])
+            else:
+                return Hospital.objects.get(id=hospital_data[0]['id'])
+                
+        except Exception as e:
+            print(f"AI hospital selection failed: {str(e)}")
+            return self.find_best_hospital(donor_lat, donor_lng, patient_lat, patient_lng)
     
     def calculate_distance(self, lat1, lng1, lat2, lng2):
-        # Haversine formula to calculate distance between two coordinates
-        R = 6371  # Earth's radius in kilometers
-        
+        R = 6371
         lat1_rad = radians(lat1)
         lng1_rad = radians(lng1)
         lat2_rad = radians(lat2)
         lng2_rad = radians(lng2)
-        
         dlat = lat2_rad - lat1_rad
         dlng = lng2_rad - lng1_rad
-        
         a = sin(dlat/2)**2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlng/2)**2
         c = 2 * atan2(sqrt(a), sqrt(1-a))
-        
         return R * c
 
 class BloodTestViewSet(viewsets.ModelViewSet):
@@ -373,13 +491,10 @@ class BloodTestViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         blood_test = serializer.save()
-        
-        # Use AI API to predict health risks
         health_risk = self.predict_health_risk(blood_test)
         blood_test.health_risk_prediction = health_risk
         blood_test.save()
         
-        # Create notification for donor
         Notification.objects.create(
             user=blood_test.donation.donor,
             notification_type='health_alert',
@@ -389,7 +504,6 @@ class BloodTestViewSet(viewsets.ModelViewSet):
         )
     
     def predict_health_risk(self, blood_test):
-        # Use OpenAI API to predict health risks based on blood test results
         try:
             api_key = settings.OPENAI_API_KEY
             headers = {
@@ -436,7 +550,6 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        # Users can only see chat rooms they're part of
         return ChatRoom.objects.filter(
             Q(donor=self.request.user) | Q(patient=self.request.user)
         )
@@ -444,8 +557,6 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
         chat_room = self.get_object()
-        
-        # Check if user is part of the chat room
         if chat_room.donor != request.user and chat_room.patient != request.user:
             return Response({'error': 'You are not part of this chat room'}, 
                            status=status.HTTP_403_FORBIDDEN)
@@ -457,8 +568,6 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def send_message(self, request, pk=None):
         chat_room = self.get_object()
-        
-        # Check if user is part of the chat room
         if chat_room.donor != request.user and chat_room.patient != request.user:
             return Response({'error': 'You are not part of this chat room'}, 
                            status=status.HTTP_403_FORBIDDEN)
@@ -504,7 +613,6 @@ def complete_donation(request, donation_id):
     except Donation.DoesNotExist:
         return Response({'error': 'Donation not found'}, status=status.HTTP_404_NOT_FOUND)
     
-    # Check if user is hospital staff or admin
     if not request.user.is_staff:
         return Response({'error': 'Only hospital staff can complete donations'}, 
                        status=status.HTTP_403_FORBIDDEN)
@@ -513,7 +621,6 @@ def complete_donation(request, donation_id):
     donation.donation_date = timezone.now()
     donation.save()
     
-    # Update blood request status if all required units are donated
     blood_request = donation.blood_request
     completed_donations = Donation.objects.filter(
         blood_request=blood_request, 
@@ -524,7 +631,6 @@ def complete_donation(request, donation_id):
         blood_request.status = 'completed'
         blood_request.save()
         
-        # Notify donor that they saved a life
         Notification.objects.create(
             user=donation.donor,
             notification_type='life_saved',
@@ -533,7 +639,6 @@ def complete_donation(request, donation_id):
             related_id=donation.id
         )
         
-        # Create chat room between donor and patient
         ChatRoom.objects.get_or_create(
             donor=donation.donor,
             patient=blood_request.patient,
@@ -542,3 +647,82 @@ def complete_donation(request, donation_id):
         )
     
     return Response({'message': 'Donation marked as completed'})
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def available_blood_requests(request):
+    """
+    List all blood requests that match donor's blood type and are within 20km
+    """
+    donor = request.user
+    
+    if not donor.is_donor:
+        return Response({'error': 'Only donors can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    if not donor.location_lat or not donor.location_long:
+        return Response({'error': 'Please update your location first'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
+    
+    # Get all pending blood requests that match donor's blood type
+    blood_requests = BloodRequest.objects.filter(
+        blood_group=donor.blood_group,
+        status='pending'
+    )
+    
+    # Filter by distance (within 20km)
+    available_requests = []
+    for blood_request in blood_requests:
+        if blood_request.location_lat and blood_request.location_long:
+            distance = calculate_distance(
+                donor.location_lat, donor.location_long,
+                blood_request.location_lat, blood_request.location_long
+            )
+            
+            if distance <= 20:  # Within 20km
+                request_data = BloodRequestSerializer(blood_request).data
+                request_data['distance'] = round(distance, 2)
+                available_requests.append(request_data)
+    
+    # Sort by distance (nearest first)
+    available_requests.sort(key=lambda x: x['distance'])
+    
+    return Response(available_requests)
+
+def calculate_distance(lat1, lng1, lat2, lng2):
+    R = 6371
+    lat1_rad = radians(lat1)
+    lng1_rad = radians(lng1)
+    lat2_rad = radians(lat2)
+    lng2_rad = radians(lng2)
+    dlat = lat2_rad - lat1_rad
+    dlng = lng2_rad - lng1_rad
+    a = sin(dlat/2)**2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlng/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    return R * c
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def debug_blood_requests(request):
+    """
+    Simple debug endpoint to check blood requests
+    """
+    donor = request.user
+    
+    # Get all blood requests
+    all_requests = BloodRequest.objects.all()
+    
+    # Get matching blood requests
+    matching_requests = BloodRequest.objects.filter(blood_group=donor.blood_group)
+    
+    return Response({
+        'donor_blood_group': donor.blood_group,
+        'donor_location': {
+            'lat': donor.location_lat,
+            'lng': donor.location_long
+        },
+        'total_requests': all_requests.count(),
+        'matching_blood_requests': matching_requests.count(),
+        'requests': BloodRequestSerializer(all_requests, many=True).data
+    })  

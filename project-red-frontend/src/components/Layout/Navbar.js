@@ -10,11 +10,11 @@ import {
   Box
 } from '@mui/material';
 import AccountCircle from '@mui/icons-material/AccountCircle';
-import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import BloodtypeIcon from '@mui/icons-material/Bloodtype';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
-
+import ChatIcon from '@mui/icons-material/Chat';
+import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const Navbar = () => {
   const [anchorEl, setAnchorEl] = useState(null);
@@ -42,7 +42,7 @@ const Navbar = () => {
           <BloodtypeIcon sx={{ mr: 1 }} />
           Project RED
         </Typography>
-        
+
         {currentUser ? (
           <Box>
             <Button color="inherit" onClick={() => navigate('/dashboard')}>
@@ -68,7 +68,14 @@ const Navbar = () => {
             >
               Hospitals
             </Button>
-            
+            <Button 
+              color="inherit" 
+              onClick={() => navigate('/chat-rooms')}
+              startIcon={<ChatIcon />}
+            >
+              Chats
+            </Button>
+
             <IconButton
               size="large"
               aria-label="account of current user"

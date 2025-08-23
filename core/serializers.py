@@ -102,12 +102,13 @@ class DonationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Donation
         fields = '__all__'
-        read_only_fields = ('donor', 'hospital', 'status')  # Add this line
+        read_only_fields = ('donor', 'hospital', 'status')
 
     def create(self, validated_data):
         # Set the donor to the current user
         validated_data['donor'] = self.context['request'].user
         return super().create(validated_data)
+
 class BloodTestSerializer(serializers.ModelSerializer):
     donor_name = serializers.CharField(source='donation.donor.get_full_name', read_only=True)
     

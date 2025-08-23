@@ -1,9 +1,11 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from .views import debug_blood_requests
+
 from .views import (
     AuthViewSet, UserViewSet, HospitalViewSet, BloodRequestViewSet,
     DonationViewSet, BloodTestViewSet, ChatRoomViewSet, NotificationViewSet,
-    complete_donation, CustomTokenObtainPairView
+    complete_donation, available_blood_requests, CustomTokenObtainPairView
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -18,9 +20,10 @@ router.register(r'chat-rooms', ChatRoomViewSet, basename='chatroom')
 router.register(r'notifications', NotificationViewSet, basename='notification')
 
 urlpatterns = [
-    path('', include(router.urls)),
-    path('complete-donation/<uuid:donation_id>/', complete_donation, name='complete-donation'),
-    # JWT endpoints
-    path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/', include(router.urls)),
+    path('api/complete-donation/<uuid:donation_id>/', complete_donation, name='complete-donation'),
+    path('api/available-blood-requests/', available_blood_requests, name='available-blood-requests'),
+    path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/debug-blood-requests/', debug_blood_requests, name='debug-blood-requests'),
 ]

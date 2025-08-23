@@ -108,7 +108,7 @@ class Donation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     donor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='donations')
     blood_request = models.ForeignKey(BloodRequest, on_delete=models.CASCADE, related_name='donations')
-    hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='donations')
+    hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='donations', null=True, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     donation_date = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -168,7 +168,7 @@ class Notification(models.Model):
     title = models.CharField(max_length=255)
     message = models.TextField()
     is_read = models.BooleanField(default=False)
-    related_id = models.UUIDField(blank=True, null=True)  # ID of related object (request, donation, etc.)
+    related_id = models.UUIDField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
