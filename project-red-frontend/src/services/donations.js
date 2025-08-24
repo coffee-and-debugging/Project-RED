@@ -3,7 +3,7 @@ import api from './api';
 export const donationService = {
   createDonation: async (donationData) => {
     const response = await api.post('/donations/', donationData);
-    return response.data;
+    return response;
   },
 
   getDonations: async () => {
@@ -11,8 +11,8 @@ export const donationService = {
     return response.data;
   },
 
-  acceptDonation: async (donationId) => {
-    const response = await api.post(`/donations/${donationId}/accept/`);
+  acceptDonation: async (donationId, locationData) => {
+    const response = await api.post(`/donations/${donationId}/accept/`, locationData);
     return response.data;
   },
 };

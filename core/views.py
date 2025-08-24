@@ -3,6 +3,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import login, logout
+from django.shortcuts import get_object_or_404
 from django.middleware.csrf import get_token
 from django.db.models import Q
 from django.utils import timezone
@@ -87,8 +88,6 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
-    
-    # ... rest of the UserViewSet code ...
     
     @action(detail=False, methods=['get'])
     def nearby_donors(self, request):
@@ -299,8 +298,6 @@ class DonationViewSet(viewsets.ModelViewSet):
         blood_request.status = 'donating'
         blood_request.save()
         
-        serializer.save(donor=self.request.user, status='scheduled')
-        
         location_lat = self.request.data.get('location_lat')
         location_long = self.request.data.get('location_long')
         
@@ -310,8 +307,7 @@ class DonationViewSet(viewsets.ModelViewSet):
             donor.location_long = float(location_long)
             donor.save()
         
-        serializer.save(donor=self.request.user)
-        
+        serializer.save(donor=self.request.user, status='scheduled')
     
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
@@ -360,14 +356,16 @@ class DonationViewSet(viewsets.ModelViewSet):
                 defaults={'is_active': True}
             )
             
+            # Send notification to patient
             Notification.objects.create(
                 user=donation.blood_request.patient,
                 notification_type='donation_accepted',
                 title='Donation Accepted',
-                message=f'{donation.donor.get_full_name()} has accepted your blood request',
-                related_id=donation.id
+                message=f'{donation.donor.get_full_name()} has accepted your blood request. Click to chat with them.',
+                related_id=chat_room.id
             )
             
+            # Send notification to donor
             Notification.objects.create(
                 user=donation.donor,
                 notification_type='donation_accepted',
@@ -578,7 +576,7 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
         chat_room = self.get_object()
         if chat_room.donor != request.user and chat_room.patient != request.user:
             return Response({'error': 'You are not part of this chat room'}, 
-                           status=status.HTTP_403_FORBIDDEN)
+                           status=status.HTTP_403_FORBidDEN)
         
         content = request.data.get('content')
         if not content:
@@ -709,7 +707,6 @@ def calculate_distance(lat1, lng1, lat2, lng2):
     c = 2 * atan2(sqrt(a), sqrt(1-a))
     return R * c
 
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def debug_blood_requests(request):
@@ -734,7 +731,7 @@ def debug_blood_requests(request):
         'matching_blood_requests': matching_requests.count(),
         'requests': BloodRequestSerializer(all_requests, many=True).data
     })  
-    
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def hospital_coordinates(request):
@@ -743,3 +740,43 @@ def hospital_coordinates(request):
     """
     hospitals = Hospital.objects.all().values('id', 'name', 'address', 'location_lat', 'location_long')
     return Response(list(hospitals))
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_chatroom_for_donation(request, donation_id):
+    """
+    Create a chat room for an existing donation that doesn't have one
+    """
+    try:
+        donation = get_object_or_404(Donation, id=donation_id)
+        
+        # Check if user is either donor or patient
+        if request.user not in [donation.donor, donation.blood_request.patient]:
+            return Response({'error': 'You are not authorized to create a chat room for this donation'}, 
+                           status=status.HTTP_403_FORBIDDEN)
+        
+        # Check if chat room already exists
+        if hasattr(donation, 'chat_room'):
+            return Response({'error': 'Chat room already exists for this donation'}, 
+                           status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create chat room
+        chat_room = ChatRoom.objects.create(
+            donor=donation.donor,
+            patient=donation.blood_request.patient,
+            donation=donation,
+            is_active=True
+        )
+        
+        # Create welcome message
+        Message.objects.create(
+            chat_room=chat_room,
+            sender=request.user,
+            content=f"Chat room created for blood donation. Donor: {donation.donor.get_full_name()}, Patient: {donation.blood_request.patient.get_full_name()}"
+        )
+        
+        serializer = ChatRoomSerializer(chat_room)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

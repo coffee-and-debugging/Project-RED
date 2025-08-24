@@ -1,13 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import debug_blood_requests
-from .views import hospital_coordinates
-
 
 from .views import (
     AuthViewSet, UserViewSet, HospitalViewSet, BloodRequestViewSet,
     DonationViewSet, BloodTestViewSet, ChatRoomViewSet, NotificationViewSet,
-    complete_donation, available_blood_requests, CustomTokenObtainPairView
+    complete_donation, available_blood_requests, CustomTokenObtainPairView,
+    create_chatroom_for_donation  # Add this import
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -18,7 +17,7 @@ router.register(r'hospitals', HospitalViewSet, basename='hospital')
 router.register(r'blood-requests', BloodRequestViewSet, basename='bloodrequest')
 router.register(r'donations', DonationViewSet, basename='donation')
 router.register(r'blood-tests', BloodTestViewSet, basename='bloodtest')
-router.register(r'chat-rooms', ChatRoomViewSet, basename='chatroom')
+router.register(r'chat-rooms', ChatRoomViewSet, basename='chatroom')  # This should work now
 router.register(r'notifications', NotificationViewSet, basename='notification')
 
 urlpatterns = [
@@ -28,6 +27,5 @@ urlpatterns = [
     path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/debug-blood-requests/', debug_blood_requests, name='debug-blood-requests'),
-    path('api/hospital-coordinates/', hospital_coordinates, name='hospital-coordinates'),
-
+    path('api/create-chatroom-for-donation/<uuid:donation_id>/', create_chatroom_for_donation, name='create-chatroom-for-donation'),
 ]

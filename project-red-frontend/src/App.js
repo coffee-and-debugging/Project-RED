@@ -12,7 +12,8 @@ import RequestBlood from './components/Patient/RequestBlood';
 import BloodRequestsList from './components/Patient/BloodRequestsList';
 import DonateBlood from './components/Donor/DonateBlood';
 import HospitalList from './components/Hospital/HospitalList';
-import ChatRoom from './components/Common/ChatRoom'; // Add this import
+import ChatRoom from './components/Common/ChatRoom';
+import ChatRoomsList from './components/Common/ChatRoomsList'; // Add this import
 
 const theme = createTheme({
   palette: {
@@ -85,7 +86,15 @@ function App() {
                 path="/chat-room/:chatRoomId" 
                 element={
                   <ProtectedRoute>
-                    <ChatRoom /> {/* This was causing the error */}
+                    <ChatRoom />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/chat-rooms" 
+                element={
+                  <ProtectedRoute>
+                    <ChatRoomsList />
                   </ProtectedRoute>
                 } 
               />

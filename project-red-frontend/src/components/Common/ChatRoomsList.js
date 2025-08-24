@@ -8,10 +8,12 @@ import {
   ListItemText,
   Button,
   Box,
-  Chip
+  Chip,
+  Alert
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { chatService } from '../../services/chat';
 import api from '../../services/api';
 
 const ChatRoomsList = () => {
@@ -29,7 +31,7 @@ const ChatRoomsList = () => {
   const fetchChatRooms = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/chat-rooms/');
+      const response = await api.get('/chat-rooms/');
       setChatRooms(response.data.results || response.data);
     } catch (error) {
       console.error('Error fetching chat rooms:', error);
@@ -39,8 +41,12 @@ const ChatRoomsList = () => {
     }
   };
 
+  const getOtherUser = (chatRoom) => {
+    return currentUser.id === chatRoom.donor ? chatRoom.patient_name : chatRoom.donor_name;
+  };
+
   if (loading) return <Typography>Loading chat rooms...</Typography>;
-  if (error) return <Typography color="error">{error}</Typography>;
+  if (error) return <Alert severity="error">{error}</Alert>;
 
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
@@ -51,7 +57,7 @@ const ChatRoomsList = () => {
       {chatRooms.length === 0 ? (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
           <Typography>You don't have any active chat rooms yet.</Typography>
-          <Typography>Accept a blood donation request to start a chat with a patient.</Typography>
+          <Typography>Start by accepting a blood donation request or wait for someone to accept your request.</Typography>
         </Paper>
       ) : (
         <Paper elevation={3}>
@@ -62,7 +68,7 @@ const ChatRoomsList = () => {
                   primary={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Typography variant="h6">
-                        Chat with {currentUser.id === chatRoom.donor ? chatRoom.patient_name : chatRoom.donor_name}
+                        Chat with {getOtherUser(chatRoom)}
                       </Typography>
                       <Chip 
                         label={chatRoom.is_active ? 'Active' : 'Inactive'} 
@@ -73,6 +79,7 @@ const ChatRoomsList = () => {
                   }
                   secondary={
                     <Typography variant="body2" color="textSecondary">
+                      Blood Request: {chatRoom.donation_blood_group} • 
                       Created: {new Date(chatRoom.created_at).toLocaleDateString()}
                     </Typography>
                   }

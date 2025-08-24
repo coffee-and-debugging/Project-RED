@@ -136,3 +136,12 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = '__all__'
+        
+class ChatRoomSerializer(serializers.ModelSerializer):
+    donor_name = serializers.CharField(source='donor.get_full_name', read_only=True)
+    patient_name = serializers.CharField(source='patient.get_full_name', read_only=True)
+    donation_blood_group = serializers.CharField(source='donation.blood_request.blood_group', read_only=True)
+    
+    class Meta:
+        model = ChatRoom
+        fields = '__all__'

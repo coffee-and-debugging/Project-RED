@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container,
   Paper,
@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { chatService, webSocketService } from '../../services/chat';
 import api from '../../services/api';
 
 const ChatRoom = () => {
@@ -31,30 +32,61 @@ const ChatRoom = () => {
   const { chatRoomId } = useParams();
   const { currentUser } = useAuth();
 
+  // WebSocket message handler
+  const handleWebSocketMessage = useCallback((data) => {
+    if (data.type === 'chat_message') {
+      setMessages(prevMessages => [
+        ...prevMessages,
+        {
+          id: data.message_id,
+          content: data.message,
+          sender: data.sender_id,
+          sender_name: data.sender_name,
+          timestamp: data.timestamp
+        }
+      ]);
+    }
+  }, []);
+
   useEffect(() => {
     fetchChatRoomData();
-  }, [chatRoomId]);
+    
+    // Setup WebSocket connection
+    webSocketService.connect(chatRoomId);
+    webSocketService.addMessageHandler(handleWebSocketMessage);
+
+    return () => {
+      // Cleanup WebSocket connection
+      webSocketService.removeMessageHandler(handleWebSocketMessage);
+      webSocketService.disconnect();
+    };
+  }, [chatRoomId, handleWebSocketMessage]);
 
   const fetchChatRoomData = async () => {
     try {
       setLoading(true);
       
       // Fetch chat room details
-      const chatResponse = await api.get(`/api/chat-rooms/${chatRoomId}/`);
-      setChatRoom(chatResponse.data);
+      const chatRoomResponse = await chatService.getChatRoom(chatRoomId);
+      setChatRoom(chatRoomResponse);
       
       // Fetch messages
-      const messagesResponse = await api.get(`/api/chat-rooms/${chatRoomId}/messages/`);
-      setMessages(messagesResponse.data);
+      const messagesResponse = await chatService.getChatRoomMessages(chatRoomId);
+      setMessages(messagesResponse);
       
       // Fetch donation details to get hospital information
-      if (chatResponse.data.donation) {
-        const donationResponse = await api.get(`/api/donations/${chatResponse.data.donation}/`);
-        setDonation(donationResponse.data);
-        
-        if (donationResponse.data.hospital) {
-          const hospitalResponse = await api.get(`/api/hospitals/${donationResponse.data.hospital}/`);
-          setHospital(hospitalResponse.data);
+      if (chatRoomResponse.donation) {
+        try {
+          const donationResponse = await api.get(`/donations/${chatRoomResponse.donation}/`);
+          setDonation(donationResponse.data);
+          
+          if (donationResponse.data.hospital) {
+            const hospitalResponse = await api.get(`/hospitals/${donationResponse.data.hospital}/`);
+            setHospital(hospitalResponse.data);
+          }
+        } catch (err) {
+          console.error('Error fetching donation/hospital:', err);
+          // Continue without hospital data if there's an error
         }
       }
       
@@ -70,11 +102,12 @@ const ChatRoom = () => {
     if (!newMessage.trim()) return;
     
     try {
-      const response = await api.post(`/api/chat-rooms/${chatRoomId}/send_message/`, {
-        content: newMessage
-      });
+      // Send via WebSocket for real-time
+      webSocketService.sendMessage(newMessage, currentUser.id);
       
-      setMessages([...messages, response.data]);
+      // Also send via API for persistence
+      await chatService.sendMessage(chatRoomId, newMessage);
+      
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -109,9 +142,6 @@ const ChatRoom = () => {
             <Typography variant="body2" gutterBottom>
               <strong>Phone:</strong> {hospital.phone_number}
             </Typography>
-            <Typography variant="body2" gutterBottom>
-              <strong>Coordinates:</strong> {hospital.location_lat?.toFixed(4)}, {hospital.location_long?.toFixed(4)}
-            </Typography>
             <Chip 
               label="AI-Suggested Nearest Hospital" 
               color="primary" 
@@ -133,13 +163,13 @@ const ChatRoom = () => {
             </ListItem>
           ) : (
             messages.map((message) => (
-              <Box key={message.id}>
+              <Box key={message.id || message.timestamp}>
                 <ListItem alignItems="flex-start">
                   <ListItemText
                     primary={
                       <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                         <Typography variant="subtitle1" color="primary">
-                          {message.sender_name}
+                          {message.sender_name || message.sender}
                         </Typography>
                         <Typography variant="caption" color="textSecondary">
                           {new Date(message.timestamp).toLocaleTimeString()}
