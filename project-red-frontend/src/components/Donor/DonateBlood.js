@@ -12,103 +12,44 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-  CircularProgress
+  DialogActions
 } from '@mui/material';
+import { donationService } from '../../services/donations';
+import { requestService } from '../../services/requests';
+import { notificationService } from '../../services/notifications';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
 const DonateBlood = () => {
   const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showLocationDialog, setShowLocationDialog] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
-  const [updatingLocation, setUpdatingLocation] = useState(false);
   
   const { currentUser } = useAuth();
-  const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user already has location set
-    if (currentUser.location_lat && currentUser.location_long) {
-      setUserLocation({
-        lat: currentUser.location_lat,
-        lng: currentUser.location_long
-      });
-      // Auto-fetch data if location is already set
-      fetchData();
-    }
-  }, [currentUser]);
+    fetchData();
+  }, []);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       setError('');
       
-      if (!userLocation) {
-        setError('Please update your location first');
-        setLoading(false);
-        return;
-      }
-      
-      // First, use the debug endpoint to see what's available
-      const debugResponse = await api.get('/api/debug-blood-requests/');
-      const debugData = debugResponse.data;
-      
-      console.log('Debug data:', debugData);
-      
-      // Get all blood requests from the regular endpoint
-      const response = await api.get('/api/blood-requests/');
-      const allRequests = response.data.results || response.data;
-      
-      console.log('All requests:', allRequests);
-      
-      // Filter manually by blood group and distance
-      const compatibleRequests = allRequests.filter(request => {
-        // Check blood group compatibility
-        const isBloodGroupMatch = request.blood_group === currentUser.blood_group;
-        
-        // Check if request has location data and status is pending
-        const hasLocation = request.location_lat && request.location_long;
-        const isPending = request.status === 'pending';
-        
-        if (!isBloodGroupMatch || !hasLocation || !isPending) return false;
-        
-        // Calculate distance
-        const distance = calculateDistance(
-          userLocation.lat, userLocation.lng,
-          request.location_lat, request.location_long
-        );
-        
-        // Check if within 20km
-        return distance <= 20;
-      });
-      
-      console.log('Compatible requests:', compatibleRequests);
-      
-      // Add distance to each request
-      const requestsWithDistance = compatibleRequests.map(request => {
-        const distance = calculateDistance(
-          userLocation.lat, userLocation.lng,
-          request.location_lat, request.location_long
-        );
-        return {
-          ...request,
-          distance: round(distance, 2)
-        };
-      });
-      
-      // Sort by distance
-      requestsWithDistance.sort((a, b) => a.distance - b.distance);
-      
-      setRequests(requestsWithDistance);
+      // Fetch available blood requests that match the donor's blood type and location
+      const response = await api.get('/available-blood-requests/');
+      setRequests(response.data);
       
     } catch (error) {
       console.error('Error fetching blood requests:', error);
-      setError('Failed to fetch blood requests. Please try again.');
+      if (error.response?.status === 400 && error.response?.data?.error === 'Please update your location first') {
+        setError('Please update your location to see available blood requests');
+      } else {
+        setError('Failed to fetch blood requests: ' + (error.response?.data?.detail || error.message));
+      }
     } finally {
       setLoading(false);
     }
@@ -124,6 +65,8 @@ const DonateBlood = () => {
             lng: position.coords.longitude
           };
           setUserLocation(location);
+          
+          // Update user location in backend
           updateUserLocation(location);
         },
         (error) => {
@@ -140,28 +83,23 @@ const DonateBlood = () => {
 
   const updateUserLocation = async (location) => {
     try {
-      setUpdatingLocation(true);
-      
-      // Update user location in backend
-      const response = await api.patch(`/api/users/${currentUser.id}/`, {
+      await api.patch(`/api/users/${currentUser.id}/`, {
         location_lat: location.lat,
         location_long: location.lng
       });
       
-      console.log('Location update response:', response.data);
-      
       setShowLocationDialog(false);
       setSuccess('Location updated successfully!');
-      setUpdatingLocation(false);
       
       // Refresh data after updating location
-      fetchData();
+      setTimeout(() => {
+        fetchData();
+      }, 1000);
       
     } catch (error) {
       console.error('Error updating location:', error);
-      setError('Failed to update location. Please try again.');
+      setError('Failed to update location: ' + (error.response?.data?.detail || error.message));
       setShowLocationDialog(false);
-      setUpdatingLocation(false);
     }
   };
 
@@ -187,30 +125,34 @@ const DonateBlood = () => {
       }
       
       // Create donation
-      const donationResponse = await api.post('/api/donations/', {
+      const donationData = {
         blood_request: requestId
-      });
+      };
       
-      const donation = donationResponse.data;
+      const donation = await donationService.createDonation(donationData);
       
       // Accept the donation with real-time location
-      const acceptResponse = await api.post(`/api/donations/${donation.id}/accept/`, {
+      const acceptData = {
         donor_lat: userLocation.lat,
         donor_lng: userLocation.lng
-      });
+      };
       
-      setSuccess('Donation accepted successfully! Chat room created with the patient.');
+      const acceptResponse = await api.post(`/api/donations/${donation.id}/accept/`, acceptData);
       
-      // Redirect to chat room
+      setSuccess('Donation accepted successfully! ' + 
+        (acceptResponse.data.hospital ? `Please proceed to ${acceptResponse.data.hospital.name}` : ''));
+      
+      // Refresh the list
       setTimeout(() => {
-        navigate(`/chat-room/${acceptResponse.data.chat_room_id}`);
+        fetchData();
       }, 2000);
       
     } catch (error) {
-      console.error('Error accepting donation:', error);
-      setError('Failed to accept donation. Please try again.');
+      setError('Failed to accept donation: ' + (error.response?.data?.detail || error.message));
     }
   };
+
+  if (loading) return <Typography>Loading blood requests...</Typography>;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -224,51 +166,27 @@ const DonateBlood = () => {
           onClick={getCurrentLocation}
           sx={{ mr: 2 }}
           color="primary"
-          disabled={updatingLocation}
         >
-          {updatingLocation ? <CircularProgress size={24} /> : '📍 Update My Location'}
+          📍 Update My Location
         </Button>
-        <Button
-          variant="contained"
-          onClick={fetchData}
-          disabled={!userLocation || loading}
-          sx={{ backgroundColor: '#d32f2f', '&:hover': { backgroundColor: '#b71c1c' } }}
-        >
-          {loading ? <CircularProgress size={24} /> : '🔄 Refresh Requests'}
-        </Button>
-        
-        <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+        <Typography variant="body2" color="textSecondary">
           {userLocation 
             ? `Your location: ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`
             : 'Location not set. Please update your location to see available blood requests.'
           }
-        </Typography>
-        <Typography variant="body2" color="textSecondary">
-          Your blood type: {currentUser.blood_group || 'Not set'}
         </Typography>
       </Box>
       
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
       
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-          <CircularProgress />
-          <Typography sx={{ ml: 2 }}>Loading blood requests...</Typography>
-        </Box>
-      ) : requests.length === 0 ? (
+      {requests.length === 0 ? (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography variant="h6" gutterBottom>
-            No Blood Requests Found
-          </Typography>
           <Typography>
             {userLocation
               ? 'No blood requests matching your blood group are currently available within 20km.'
               : 'Please update your location to see available blood requests.'
             }
-          </Typography>
-          <Typography variant="body2" sx={{ mt: 2 }}>
-            Make sure your blood type is set correctly in your profile.
           </Typography>
         </Paper>
       ) : (
@@ -346,11 +264,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     Math.sin(dLon/2) * Math.sin(dLon/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
-}
-
-// Helper function to round numbers
-function round(value, decimals) {
-  return Number(Math.round(value + 'e' + decimals) + 'e-' + decimals);
 }
 
 export default DonateBlood;
