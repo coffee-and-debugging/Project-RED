@@ -33,7 +33,13 @@ const BloodRequestsList = () => {
     try {
       setLoading(true);
       const response = await requestService.getRequests();
-      setRequests(response.results || []);
+      
+      // Filter requests to show only those created by the current user
+      const userRequests = (response.results || []).filter(
+        request => request.patient === currentUser.id
+      );
+      
+      setRequests(userRequests);
     } catch (error) {
       setError('Failed to fetch blood requests: ' + error.message);
     } finally {
@@ -58,7 +64,7 @@ const BloodRequestsList = () => {
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1">
-          Blood Requests
+          My Blood Requests
         </Typography>
         {currentUser?.is_recipient && (
           <Button
@@ -74,7 +80,6 @@ const BloodRequestsList = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Patient</TableCell>
               <TableCell>Blood Group</TableCell>
               <TableCell>Units</TableCell>
               <TableCell>Urgency</TableCell>
@@ -85,7 +90,6 @@ const BloodRequestsList = () => {
           <TableBody>
             {requests.map((request) => (
               <TableRow key={request.id}>
-                <TableCell>{request.patient_name}</TableCell>
                 <TableCell>
                   <Chip label={request.blood_group} color="primary" variant="outlined" />
                 </TableCell>
@@ -113,7 +117,16 @@ const BloodRequestsList = () => {
 
       {requests.length === 0 && (
         <Paper sx={{ p: 3, mt: 2, textAlign: 'center' }}>
-          <Typography>No blood requests found.</Typography>
+          <Typography>You haven't made any blood requests yet.</Typography>
+          {currentUser?.is_recipient && (
+            <Button
+              variant="contained"
+              onClick={() => navigate('/request-blood')}
+              sx={{ mt: 2 }}
+            >
+              Make Your First Request
+            </Button>
+          )}
         </Paper>
       )}
     </Container>
