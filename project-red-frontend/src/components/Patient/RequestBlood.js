@@ -66,7 +66,7 @@ const RequestBlood = () => {
       
       await requestService.createRequest(formData);
       setSuccess('Blood request created successfully!');
-      setTimeout(() => navigate('/blood-requests'), 2000);
+      setTimeout(() => navigate('blood-requests'), 2000);
     } catch (error) {
       setError('Failed to create blood request: ' + (error.response?.data?.detail || error.message));
     } finally {

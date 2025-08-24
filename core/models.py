@@ -78,6 +78,7 @@ class Hospital(models.Model):
 class BloodRequest(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
+        ('donating', 'Donating'),
         ('accepted', 'Accepted'),
         ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),

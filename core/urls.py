@@ -1,6 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import debug_blood_requests
+from .views import hospital_coordinates
+
 
 from .views import (
     AuthViewSet, UserViewSet, HospitalViewSet, BloodRequestViewSet,
@@ -26,4 +28,6 @@ urlpatterns = [
     path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/debug-blood-requests/', debug_blood_requests, name='debug-blood-requests'),
+    path('api/hospital-coordinates/', hospital_coordinates, name='hospital-coordinates'),
+
 ]

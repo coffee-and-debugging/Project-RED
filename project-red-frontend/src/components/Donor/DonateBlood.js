@@ -15,9 +15,9 @@ import {
   DialogActions
 } from '@mui/material';
 import { donationService } from '../../services/donations';
-import { requestService } from '../../services/requests';
-import { notificationService } from '../../services/notifications';
+import { hospitalService } from '../../services/hospitals';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
 const DonateBlood = () => {
@@ -27,11 +27,14 @@ const DonateBlood = () => {
   const [success, setSuccess] = useState('');
   const [showLocationDialog, setShowLocationDialog] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
+  const [hospitals, setHospitals] = useState([]);
   
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchData();
+    fetchHospitals();
   }, []);
 
   const fetchData = async () => {
@@ -52,6 +55,16 @@ const DonateBlood = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchHospitals = async () => {
+    try {
+      // Use the hospital service to get coordinates
+      const hospitalData = await hospitalService.getHospitals();
+      setHospitals(hospitalData.results || hospitalData);
+    } catch (error) {
+      console.error('Error fetching hospitals:', error);
     }
   };
 
@@ -83,7 +96,7 @@ const DonateBlood = () => {
 
   const updateUserLocation = async (location) => {
     try {
-      await api.patch(`/api/users/${currentUser.id}/`, {
+      await api.patch(`/users/${currentUser.id}/`, {
         location_lat: location.lat,
         location_long: location.lng
       });
@@ -101,6 +114,29 @@ const DonateBlood = () => {
       setError('Failed to update location: ' + (error.response?.data?.detail || error.message));
       setShowLocationDialog(false);
     }
+  };
+
+  const findBestHospital = (donorLat, donorLng) => {
+    if (!hospitals || hospitals.length === 0) return null;
+    
+    let bestHospital = null;
+    let minDistance = Infinity;
+    
+    hospitals.forEach(hospital => {
+      if (hospital.location_lat && hospital.location_long) {
+        const distance = calculateDistance(
+          donorLat, donorLng,
+          hospital.location_lat, hospital.location_long
+        );
+        
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestHospital = hospital;
+        }
+      }
+    });
+    
+    return bestHospital;
   };
 
   const handleAcceptRequest = async (requestId, requestLat, requestLng) => {
@@ -124,27 +160,34 @@ const DonateBlood = () => {
         return;
       }
       
+      // Find the best hospital
+      const bestHospital = findBestHospital(userLocation.lat, userLocation.lng);
+      
       // Create donation
       const donationData = {
-        blood_request: requestId
+        blood_request: requestId,
+        hospital: bestHospital ? bestHospital.id : null
       };
       
       const donation = await donationService.createDonation(donationData);
       
-      // Accept the donation with real-time location
-      const acceptData = {
-        donor_lat: userLocation.lat,
-        donor_lng: userLocation.lng
-      };
+      // Update blood request status to "donating"
+      await api.patch(`/blood-requests/${requestId}/`, {
+        status: 'donating'
+      });
       
-      const acceptResponse = await api.post(`/api/donations/${donation.id}/accept/`, acceptData);
+      // Create chat room
+      const chatRoomResponse = await api.post('/chat-rooms/', {
+        donation: donation.id,
+        donor: currentUser.id,
+        patient: donation.blood_request.patient
+      });
       
-      setSuccess('Donation accepted successfully! ' + 
-        (acceptResponse.data.hospital ? `Please proceed to ${acceptResponse.data.hospital.name}` : ''));
+      setSuccess('Donation accepted successfully! Redirecting to chat room...');
       
-      // Refresh the list
+      // Redirect to chat room
       setTimeout(() => {
-        fetchData();
+        navigate(`/chat-room/${chatRoomResponse.data.id}`);
       }, 2000);
       
     } catch (error) {
@@ -157,7 +200,7 @@ const DonateBlood = () => {
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
-        🩸 Available Blood Requests
+        🩸 Available Blood Requests (Within 20km)
       </Typography>
       
       <Box sx={{ mb: 3 }}>

@@ -11,7 +11,9 @@ import {
   ListItemText,
   Divider,
   Chip,
-  Alert
+  Alert,
+  Card,
+  CardContent
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -22,6 +24,7 @@ const ChatRoom = () => {
   const [newMessage, setNewMessage] = useState('');
   const [chatRoom, setChatRoom] = useState(null);
   const [hospital, setHospital] = useState(null);
+  const [donation, setDonation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
@@ -47,9 +50,11 @@ const ChatRoom = () => {
       // Fetch donation details to get hospital information
       if (chatResponse.data.donation) {
         const donationResponse = await api.get(`/api/donations/${chatResponse.data.donation}/`);
+        setDonation(donationResponse.data);
         
         if (donationResponse.data.hospital) {
-          setHospital(donationResponse.data.hospital);
+          const hospitalResponse = await api.get(`/api/hospitals/${donationResponse.data.hospital}/`);
+          setHospital(hospitalResponse.data);
         }
       }
       
@@ -90,26 +95,31 @@ const ChatRoom = () => {
       </Typography>
       
       {hospital && (
-        <Paper elevation={2} sx={{ p: 2, mb: 2, backgroundColor: '#e3f2fd' }}>
-          <Typography variant="h6" color="primary" gutterBottom>
-            🏥 Hospital Information
-          </Typography>
-          <Typography variant="body1">
-            <strong>Please donate blood at:</strong> {hospital.name}
-          </Typography>
-          <Typography variant="body2">
-            <strong>Address:</strong> {hospital.address}
-          </Typography>
-          <Typography variant="body2">
-            <strong>Phone:</strong> {hospital.phone_number}
-          </Typography>
-          <Chip 
-            label="Nearest Hospital" 
-            color="primary" 
-            variant="outlined" 
-            sx={{ mt: 1 }}
-          />
-        </Paper>
+        <Card sx={{ mb: 2, backgroundColor: '#e3f2fd' }}>
+          <CardContent>
+            <Typography variant="h6" color="primary" gutterBottom>
+              🏥 Suggested Hospital for Donation
+            </Typography>
+            <Typography variant="body1" gutterBottom>
+              <strong>{hospital.name}</strong>
+            </Typography>
+            <Typography variant="body2" gutterBottom>
+              <strong>Address:</strong> {hospital.address}
+            </Typography>
+            <Typography variant="body2" gutterBottom>
+              <strong>Phone:</strong> {hospital.phone_number}
+            </Typography>
+            <Typography variant="body2" gutterBottom>
+              <strong>Coordinates:</strong> {hospital.location_lat?.toFixed(4)}, {hospital.location_long?.toFixed(4)}
+            </Typography>
+            <Chip 
+              label="AI-Suggested Nearest Hospital" 
+              color="primary" 
+              variant="outlined" 
+              sx={{ mt: 1 }}
+            />
+          </CardContent>
+        </Card>
       )}
       
       <Paper elevation={3} sx={{ height: '400px', overflow: 'auto', p: 2, mb: 2 }}>

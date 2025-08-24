@@ -294,6 +294,13 @@ class DonationViewSet(viewsets.ModelViewSet):
         )
         
     def perform_create(self, serializer):
+        # Set the donor to the current user and update status to donating
+        blood_request = serializer.validated_data['blood_request']
+        blood_request.status = 'donating'
+        blood_request.save()
+        
+        serializer.save(donor=self.request.user, status='scheduled')
+        
         location_lat = self.request.data.get('location_lat')
         location_long = self.request.data.get('location_long')
         
@@ -304,6 +311,7 @@ class DonationViewSet(viewsets.ModelViewSet):
             donor.save()
         
         serializer.save(donor=self.request.user)
+        
     
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
@@ -726,3 +734,12 @@ def debug_blood_requests(request):
         'matching_blood_requests': matching_requests.count(),
         'requests': BloodRequestSerializer(all_requests, many=True).data
     })  
+    
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def hospital_coordinates(request):
+    """
+    Get all hospitals with their coordinates
+    """
+    hospitals = Hospital.objects.all().values('id', 'name', 'address', 'location_lat', 'location_long')
+    return Response(list(hospitals))

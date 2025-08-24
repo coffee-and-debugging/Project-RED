@@ -1,11 +1,6 @@
 import api from './api';
 
 export const hospitalService = {
-  getHospitalCoordinates: async () => {
-    const response = await api.get('/hospital-coordinates/');
-    return response.data;
-  },
-  
   createHospital: async (hospitalData) => {
     const response = await api.post('/hospitals/', hospitalData);
     return response.data;
