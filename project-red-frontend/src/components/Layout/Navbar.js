@@ -36,6 +36,15 @@ const Navbar = () => {
     navigate('/login');
   };
 
+  const handleHospitalLogout = () => {
+    localStorage.removeItem('hospital_access_token');
+    localStorage.removeItem('hospital_refresh_token');
+    localStorage.removeItem('hospital_user');
+    navigate('/');
+  };
+
+  const hospitalUser = JSON.parse(localStorage.getItem('hospital_user'));
+
   return (
     <AppBar position="static">
       <Toolbar>
@@ -108,13 +117,30 @@ const Navbar = () => {
               <MenuItem onClick={handleLogout}>Logout</MenuItem>
             </Menu>
           </Box>
+        ) : hospitalUser ? (
+          <Box>
+            <Button color="inherit" onClick={() => navigate('/hospital-dashboard')}>
+              <LocalHospitalIcon sx={{ mr: 1 }} />
+              Hospital Dashboard
+            </Button>
+            <Button color="inherit" onClick={handleHospitalLogout}>
+              Logout
+            </Button>
+          </Box>
         ) : (
           <Box>
+            <Button color="inherit" onClick={() => navigate('/hospital-login')}>
+              <LocalHospitalIcon sx={{ mr: 1 }} />
+              Hospital Login
+            </Button>
+            <Button color="inherit" onClick={() => navigate('/hospital-register')}>
+              Hospital Register
+            </Button>
             <Button color="inherit" onClick={() => navigate('/login')}>
-              Login
+              User Login
             </Button>
             <Button color="inherit" onClick={() => navigate('/register')}>
-              Register
+              User Register
             </Button>
           </Box>
         )}

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification
+from .models import User, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification, HospitalUser
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -11,6 +11,12 @@ class UserAdmin(admin.ModelAdmin):
 class HospitalAdmin(admin.ModelAdmin):
     list_display = ('name', 'address', 'phone_number')
     search_fields = ('name', 'address')
+
+@admin.register(HospitalUser)
+class HospitalUserAdmin(admin.ModelAdmin):
+    list_display = ('username', 'hospital', 'is_active', 'created_at')
+    list_filter = ('is_active', 'created_at')
+    search_fields = ('username', 'hospital__name')
 
 @admin.register(BloodRequest)
 class BloodRequestAdmin(admin.ModelAdmin):
@@ -26,8 +32,8 @@ class DonationAdmin(admin.ModelAdmin):
 
 @admin.register(BloodTest)
 class BloodTestAdmin(admin.ModelAdmin):
-    list_display = ('donation', 'sugar_level', 'hemoglobin', 'tested_by')
-    search_fields = ('donation__donor__username', 'tested_by__username')
+    list_display = ('donation', 'sugar_level', 'hemoglobin', 'tested_by', 'life_saved')
+    search_fields = ('donation__donor__username', 'tested_by__name')
 
 @admin.register(ChatRoom)
 class ChatRoomAdmin(admin.ModelAdmin):

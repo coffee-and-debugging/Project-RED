@@ -6,7 +6,7 @@ from .views import (
     AuthViewSet, UserViewSet, HospitalViewSet, BloodRequestViewSet,
     DonationViewSet, BloodTestViewSet, ChatRoomViewSet, NotificationViewSet,
     complete_donation, available_blood_requests, CustomTokenObtainPairView,
-    create_chatroom_for_donation  # Add this import
+    create_chatroom_for_donation, HospitalAuthViewSet, HospitalDashboardViewSet
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -17,8 +17,10 @@ router.register(r'hospitals', HospitalViewSet, basename='hospital')
 router.register(r'blood-requests', BloodRequestViewSet, basename='bloodrequest')
 router.register(r'donations', DonationViewSet, basename='donation')
 router.register(r'blood-tests', BloodTestViewSet, basename='bloodtest')
-router.register(r'chat-rooms', ChatRoomViewSet, basename='chatroom')  # This should work now
+router.register(r'chat-rooms', ChatRoomViewSet, basename='chatroom')
 router.register(r'notifications', NotificationViewSet, basename='notification')
+router.register(r'hospital-auth', HospitalAuthViewSet, basename='hospital-auth')
+router.register(r'hospital-dashboard', HospitalDashboardViewSet, basename='hospital-dashboard')
 
 urlpatterns = [
     path('api/', include(router.urls)),

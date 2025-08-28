@@ -13,7 +13,10 @@ import BloodRequestsList from './components/Patient/BloodRequestsList';
 import DonateBlood from './components/Donor/DonateBlood';
 import HospitalList from './components/Hospital/HospitalList';
 import ChatRoom from './components/Common/ChatRoom';
-import ChatRoomsList from './components/Common/ChatRoomsList'; // Add this import
+import ChatRoomsList from './components/Common/ChatRoomsList';
+import HospitalRegister from './components/Hospital/HospitalRegister';
+import HospitalLogin from './components/Hospital/HospitalLogin';
+import HospitalDashboard from './components/Hospital/HospitalDashboard';
 
 const theme = createTheme({
   palette: {
@@ -31,6 +34,11 @@ const ProtectedRoute = ({ children }) => {
   return currentUser ? children : <Navigate to="/login" />;
 };
 
+const HospitalProtectedRoute = ({ children }) => {
+  const hospitalUser = JSON.parse(localStorage.getItem('hospital_user'));
+  return hospitalUser ? children : <Navigate to="/hospital-login" />;
+};
+
 function App() {
   return (
     <ThemeProvider theme={theme}>
@@ -42,6 +50,16 @@ function App() {
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/hospital-register" element={<HospitalRegister />} />
+              <Route path="/hospital-login" element={<HospitalLogin />} />
+              <Route 
+                path="/hospital-dashboard" 
+                element={
+                  <HospitalProtectedRoute>
+                    <HospitalDashboard />
+                  </HospitalProtectedRoute>
+                } 
+              />
               <Route 
                 path="/dashboard" 
                 element={

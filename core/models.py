@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.contrib.auth.hashers import make_password, check_password
 import uuid
 
 class CustomUserManager(BaseUserManager):
@@ -18,7 +19,6 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('is_active', True)
         
-        # Set default values for our custom required fields
         extra_fields.setdefault('blood_group', 'O+')
         extra_fields.setdefault('age', 30)
         extra_fields.setdefault('gender', 'O')
@@ -29,21 +29,11 @@ class CustomUserManager(BaseUserManager):
 
 class User(AbstractUser):
     BLOOD_GROUPS = [
-        ('A+', 'A+'),
-        ('A-', 'A-'),
-        ('B+', 'B+'),
-        ('B-', 'B-'),
-        ('AB+', 'AB+'),
-        ('AB-', 'AB-'),
-        ('O+', 'O+'),
-        ('O-', 'O-'),
+        ('A+', 'A+'), ('A-', 'A-'), ('B+', 'B+'), ('B-', 'B-'),
+        ('AB+', 'AB+'), ('AB-', 'AB-'), ('O+', 'O+'), ('O-', 'O-'),
     ]
     
-    GENDER_CHOICES = [
-        ('M', 'Male'),
-        ('F', 'Female'),
-        ('O', 'Other'),
-    ]
+    GENDER_CHOICES = [('M', 'Male'), ('F', 'Female'), ('O', 'Other')]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     blood_group = models.CharField(max_length=3, choices=BLOOD_GROUPS, blank=True, null=True)
@@ -65,7 +55,7 @@ class User(AbstractUser):
 
 class Hospital(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255)
+    name = models.CharField(max_length=255, unique=True)
     address = models.TextField()
     phone_number = models.CharField(max_length=15)
     location_lat = models.FloatField()
@@ -75,13 +65,50 @@ class Hospital(models.Model):
     def __str__(self):
         return self.name
 
+class HospitalUser(models.Model):
+    """Hospital authentication model"""
+    hospital = models.OneToOneField(Hospital, on_delete=models.CASCADE, related_name='auth_account')
+    username = models.CharField(max_length=150, unique=True)
+    password = models.CharField(max_length=128)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Add authentication attributes
+    is_authenticated = True
+    is_anonymous = False
+    
+    def set_password(self, raw_password):
+        self.password = make_password(raw_password)
+        self.save()
+    
+    def check_password(self, raw_password):
+        return check_password(raw_password, self.password)
+    
+    def __str__(self):
+        return f"Hospital Auth: {self.hospital.name}"
+    
+    # Add these methods for Django authentication compatibility
+    def get_username(self):
+        return self.username
+    
+    @property
+    def is_staff(self):
+        return False
+    
+    @property
+    def is_superuser(self):
+        return False
+    
+    def has_perm(self, perm, obj=None):
+        return False
+    
+    def has_module_perms(self, app_label):
+        return False
+
 class BloodRequest(models.Model):
     STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('donating', 'Donating'),
-        ('accepted', 'Accepted'),
-        ('completed', 'Completed'),
-        ('cancelled', 'Cancelled'),
+        ('pending', 'Pending'), ('donating', 'Donating'), ('accepted', 'Accepted'),
+        ('completed', 'Completed'), ('cancelled', 'Cancelled'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -100,10 +127,8 @@ class BloodRequest(models.Model):
 
 class Donation(models.Model):
     STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('scheduled', 'Scheduled'),
-        ('completed', 'Completed'),
-        ('cancelled', 'Cancelled'),
+        ('pending', 'Pending'), ('scheduled', 'Scheduled'),
+        ('completed', 'Completed'), ('cancelled', 'Cancelled'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -112,6 +137,7 @@ class Donation(models.Model):
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='donations', null=True, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     donation_date = models.DateTimeField(blank=True, null=True)
+    ai_recommended_hospital = models.BooleanField(default=False)  # Track if hospital was AI recommended
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
@@ -126,8 +152,9 @@ class BloodTest(models.Model):
     rbc_count = models.FloatField()
     hemoglobin = models.FloatField()
     platelet_count = models.FloatField()
-    tested_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='blood_tests')
+    tested_by = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='blood_tests')
     health_risk_prediction = models.TextField(blank=True, null=True)
+    life_saved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
@@ -161,6 +188,7 @@ class Notification(models.Model):
         ('donation_completed', 'Donation Completed'),
         ('life_saved', 'Life Saved'),
         ('health_alert', 'Health Alert'),
+        ('hospital_assigned', 'Hospital Assigned'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
