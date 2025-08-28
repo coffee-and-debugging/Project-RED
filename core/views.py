@@ -608,6 +608,10 @@ class BloodTestViewSet(viewsets.ModelViewSet):
     def predict_health_risk(self, blood_test):
         try:
             api_key = settings.OPENAI_API_KEY
+            if not api_key:
+                print("OpenAI API key not found")
+                return "Could not analyze blood test results at this time. Please consult a doctor."
+            
             headers = {
                 'Authorization': f'Bearer {api_key}',
                 'Content-Type': 'application/json'
@@ -623,27 +627,40 @@ class BloodTestViewSet(viewsets.ModelViewSet):
             - Platelet Count: {blood_test.platelet_count} platelets/mcL (Normal: 150,000-450,000 platelets/mcL)
             
             Provide a concise assessment of any potential health risks or abnormalities.
+            Focus on actionable insights and recommendations.
             """
+            
+            print(f"Sending request to OpenAI API with prompt: {prompt[:100]}...")
             
             data = {
                 'model': 'gpt-3.5-turbo',
                 'messages': [{'role': 'user', 'content': prompt}],
-                'max_tokens': 200
+                'max_tokens': 300,
+                'temperature': 0.3
             }
             
             response = requests.post(
                 'https://api.openai.com/v1/chat/completions',
                 headers=headers,
-                data=json.dumps(data)
+                data=json.dumps(data),
+                timeout=15
             )
+            
+            print(f"OpenAI API response status: {response.status_code}")
             
             if response.status_code == 200:
                 result = response.json()
-                return result['choices'][0]['message']['content'].strip()
+                prediction = result['choices'][0]['message']['content'].strip()
+                print(f"AI prediction generated: {prediction[:100]}...")
+                return prediction
             else:
+                print(f"OpenAI API error: {response.status_code} - {response.text}")
                 return "Could not analyze blood test results at this time. Please consult a doctor."
                 
         except Exception as e:
+            print(f"Error in predict_health_risk: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return f"Error analyzing blood test: {str(e)}"
 
 class ChatRoomViewSet(viewsets.ModelViewSet):
@@ -693,7 +710,13 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user).order_by('-created_at')
+        print(f"Fetching notifications for user: {self.request.user.username}")
+        notifications = Notification.objects.filter(user=self.request.user).order_by('-created_at')
+        print(f"Found {notifications.count()} notifications")
+        for notification in notifications:
+            print(f"Notification: {notification.id}, Type: {notification.notification_type}, Message: {notification.message[:50]}...")
+        return notifications
+    
     
     @action(detail=False, methods=['post'])
     def mark_all_read(self, request):
@@ -830,17 +853,21 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
             health_risk = self.predict_health_risk(blood_test)
             blood_test.health_risk_prediction = health_risk
             blood_test.save()
-            print(f"Health risk prediction added: {health_risk[:50]}...")
+            print(f"Health risk prediction added: {health_risk[:100]}...")
+            
+            # In submit_blood_test method, add debug info
+            print(f"Donor username: {donation.donor.username}")
+            print(f"Donor ID: {donation.donor.id}")
             
             # Send notification to donor
-            Notification.objects.create(
+            notification = Notification.objects.create(
                 user=donation.donor,
                 notification_type='health_alert',
                 title='Blood Test Results Available',
                 message=f'Your blood test results are ready. {health_risk}',
                 related_id=blood_test.id
             )
-            print("Notification sent to donor")
+            print(f"Notification created: ID={notification.id}, User={notification.user.username}, Message={notification.message[:50]}...")
             
             # Check if life was saved
             if blood_test.life_saved:
@@ -1127,6 +1154,20 @@ def submit_blood_test(self, request, pk=None):
         blood_test.health_risk_prediction = health_risk
         blood_test.save()
         print(f"Health risk prediction added: {health_risk[:50]}...")
+        
+        
+        # After generating the health risk prediction
+        health_risk = self.predict_health_risk(blood_test)
+        print(f"Generated health risk: {health_risk}")
+
+        # Refresh the blood test object and save the prediction
+        blood_test.refresh_from_db()
+        blood_test.health_risk_prediction = health_risk
+        blood_test.save()
+
+        # Verify the prediction was saved
+        blood_test.refresh_from_db()
+        print(f"Verified health risk saved: {blood_test.health_risk_prediction is not None}")
         
         # Send notification to donor
         Notification.objects.create(

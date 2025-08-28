@@ -8,11 +8,11 @@ export const donationService = {
 
   getDonations: async () => {
     const response = await api.get('/donations/');
-    return response.data;
+    return response;
   },
 
   acceptDonation: async (donationId, locationData) => {
     const response = await api.post(`/donations/${donationId}/accept/`, locationData);
-    return response.data;
+    return response;
   },
 };

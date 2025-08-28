@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -14,13 +14,33 @@ import AccountCircle from '@mui/icons-material/AccountCircle';
 import BloodtypeIcon from '@mui/icons-material/Bloodtype';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import ChatIcon from '@mui/icons-material/Chat';
+import NotificationsIcon from '@mui/icons-material/Notifications';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { notificationService } from '../../services/notifications';
 
 const Navbar = () => {
   const [anchorEl, setAnchorEl] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchUnreadNotifications();
+    }
+  }, [currentUser]);
+
+  const fetchUnreadNotifications = async () => {
+    try {
+      const response = await notificationService.getNotifications();
+      const notifications = response.data.results || response.data;
+      const unread = notifications.filter(n => !n.is_read).length;
+      setUnreadCount(unread);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    }
+  };
 
   const handleMenu = (event) => {
     setAnchorEl(event.currentTarget);
@@ -35,15 +55,6 @@ const Navbar = () => {
     await logout();
     navigate('/login');
   };
-
-  const handleHospitalLogout = () => {
-    localStorage.removeItem('hospital_access_token');
-    localStorage.removeItem('hospital_refresh_token');
-    localStorage.removeItem('hospital_user');
-    navigate('/');
-  };
-
-  const hospitalUser = JSON.parse(localStorage.getItem('hospital_user'));
 
   return (
     <AppBar position="static">
@@ -88,6 +99,16 @@ const Navbar = () => {
 
             <IconButton
               size="large"
+              color="inherit"
+              onClick={() => navigate('/dashboard')}
+            >
+              <Badge badgeContent={unreadCount} color="error">
+                <NotificationsIcon />
+              </Badge>
+            </IconButton>
+
+            <IconButton
+              size="large"
               aria-label="account of current user"
               aria-controls="menu-appbar"
               aria-haspopup="true"
@@ -117,30 +138,13 @@ const Navbar = () => {
               <MenuItem onClick={handleLogout}>Logout</MenuItem>
             </Menu>
           </Box>
-        ) : hospitalUser ? (
-          <Box>
-            <Button color="inherit" onClick={() => navigate('/hospital-dashboard')}>
-              <LocalHospitalIcon sx={{ mr: 1 }} />
-              Hospital Dashboard
-            </Button>
-            <Button color="inherit" onClick={handleHospitalLogout}>
-              Logout
-            </Button>
-          </Box>
         ) : (
           <Box>
-            <Button color="inherit" onClick={() => navigate('/hospital-login')}>
-              <LocalHospitalIcon sx={{ mr: 1 }} />
-              Hospital Login
-            </Button>
-            <Button color="inherit" onClick={() => navigate('/hospital-register')}>
-              Hospital Register
-            </Button>
             <Button color="inherit" onClick={() => navigate('/login')}>
-              User Login
+              Login
             </Button>
             <Button color="inherit" onClick={() => navigate('/register')}>
-              User Register
+              Register
             </Button>
           </Box>
         )}

@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
+
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Navbar from './components/Layout/Navbar';
 import Login from './components/Auth/Login';
@@ -58,6 +59,14 @@ function App() {
                   <HospitalProtectedRoute>
                     <HospitalDashboard />
                   </HospitalProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/dashboard" 
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
                 } 
               />
               <Route 
