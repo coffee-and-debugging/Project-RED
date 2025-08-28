@@ -30,4 +30,10 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/debug-blood-requests/', debug_blood_requests, name='debug-blood-requests'),
     path('api/create-chatroom-for-donation/<uuid:donation_id>/', create_chatroom_for_donation, name='create-chatroom-for-donation'),
+    path('api/hospital-dashboard/<uuid:pk>/submit_blood_test/',
+         HospitalDashboardViewSet.as_view({'post': 'submit_blood_test'}),
+         name='hospital-dashboard-submit-blood-test'),
+    path('api/hospital-dashboard/<uuid:pk>/update_blood_test/',
+         HospitalDashboardViewSet.as_view({'put': 'update_blood_test'}),
+         name='hospital-dashboard-update-blood-test'),
 ]

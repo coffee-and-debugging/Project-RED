@@ -146,12 +146,12 @@ class Donation(models.Model):
 class BloodTest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     donation = models.OneToOneField(Donation, on_delete=models.CASCADE, related_name='blood_test')
-    sugar_level = models.FloatField()
-    uric_acid_level = models.FloatField()
-    wbc_count = models.FloatField()
-    rbc_count = models.FloatField()
-    hemoglobin = models.FloatField()
-    platelet_count = models.FloatField()
+    sugar_level = models.FloatField(blank=True, null=True)  # Make optional
+    uric_acid_level = models.FloatField(blank=True, null=True)  # Make optional
+    wbc_count = models.FloatField(blank=True, null=True)  # Make optional
+    rbc_count = models.FloatField(blank=True, null=True)  # Make optional
+    hemoglobin = models.FloatField(blank=True, null=True)  # Make optional
+    platelet_count = models.FloatField(blank=True, null=True)  # Make optional
     tested_by = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='blood_tests')
     health_risk_prediction = models.TextField(blank=True, null=True)
     life_saved = models.BooleanField(default=False)
