@@ -6,6 +6,7 @@ from django.contrib.auth import login, logout
 from django.shortcuts import get_object_or_404
 from django.middleware.csrf import get_token
 from django.db.models import Q
+import traceback
 from django.utils import timezone
 from .models import User, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification, HospitalUser
 from .serializers import (
@@ -337,11 +338,23 @@ class BloodRequestViewSet(viewsets.ModelViewSet):
         donors_with_distance.sort(key=lambda x: x['distance'])
         return Response(donors_with_distance)
 
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from django.db.models import Q
+from django.conf import settings
+from math import radians, sin, cos, sqrt, atan2
+import requests, json
+
+from .models import Donation, Hospital, ChatRoom, Notification
+from .serializers import DonationSerializer, HospitalSerializer
+
 class DonationViewSet(viewsets.ModelViewSet):
     queryset = Donation.objects.all()
     serializer_class = DonationSerializer
     permission_classes = [IsAuthenticated]
-    
+
     def get_queryset(self):
         if self.request.user.is_staff:
             return Donation.objects.all()
@@ -349,72 +362,82 @@ class DonationViewSet(viewsets.ModelViewSet):
             Q(donor=self.request.user) | 
             Q(blood_request__patient=self.request.user)
         )
-        
+
     def perform_create(self, serializer):
         blood_request = serializer.validated_data['blood_request']
         blood_request.status = 'donating'
         blood_request.save()
-        
+
         location_lat = self.request.data.get('location_lat')
         location_long = self.request.data.get('location_long')
-        
+
         if location_lat and location_long:
             donor = self.request.user
             donor.location_lat = float(location_lat)
             donor.location_long = float(location_long)
             donor.save()
-        
+
         serializer.save(donor=self.request.user, status='scheduled')
-    
+
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
         try:
             donation = self.get_object()
-            
+
+            print(f"Accepting donation {donation.id} from donor {donation.donor.username}")
+
             if donation.donor != request.user:
-                return Response({'error': 'You can only accept your own donations'}, 
-                               status=status.HTTP_403_FORBIDDEN)
-            
+                return Response({'error': 'You can only accept your own donations'},
+                                status=status.HTTP_403_FORBIDDEN)
+
             if donation.status != 'pending':
-                return Response({'error': 'Donation has already been processed'}, 
-                               status=status.HTTP_400_BAD_REQUEST)
-            
+                return Response({'error': 'Donation has already been processed'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
             donor_lat = request.data.get('donor_lat')
             donor_lng = request.data.get('donor_lng')
-            
+
             if not donor_lat or not donor_lng:
-                return Response({'error': 'Real-time location coordinates are required'}, 
-                               status=status.HTTP_400_BAD_REQUEST)
-            
+                return Response({'error': 'Real-time location coordinates are required'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
             donation.donor.location_lat = float(donor_lat)
             donation.donor.location_lng = float(donor_lng)
             donation.donor.save()
-            
+
+            print(f"Donor location updated: {donor_lat}, {donor_lng}")
+
             best_hospital = self.find_best_hospital_with_ai(
                 float(donor_lat), float(donor_lng),
                 donation.blood_request.location_lat, donation.blood_request.location_long
             )
-            
+
             if not best_hospital:
                 best_hospital = self.find_best_hospital(
                     float(donor_lat), float(donor_lng),
                     donation.blood_request.location_lat, donation.blood_request.location_long
                 )
-            
+
+            print(f"Best hospital found: {best_hospital.name if best_hospital else 'None'}")
+
             donation.status = 'scheduled'
             if best_hospital:
                 donation.hospital = best_hospital
                 donation.ai_recommended_hospital = True
+                print(f"Assigned hospital: {best_hospital.name}, AI Recommended: {donation.ai_recommended_hospital}")
             donation.save()
-            
+
+            print(f"Donation saved with hospital: {donation.hospital.name if donation.hospital else 'None'}")
+
             chat_room, created = ChatRoom.objects.get_or_create(
                 donor=donation.donor,
                 patient=donation.blood_request.patient,
                 donation=donation,
                 defaults={'is_active': True}
             )
-            
-            # Send notification to patient
+
+            print(f"Chat room {'created' if created else 'exists'}: {chat_room.id}")
+
             Notification.objects.create(
                 user=donation.blood_request.patient,
                 notification_type='donation_accepted',
@@ -422,8 +445,7 @@ class DonationViewSet(viewsets.ModelViewSet):
                 message=f'{donation.donor.get_full_name()} has accepted your blood request. Click to chat with them.',
                 related_id=chat_room.id
             )
-            
-            # Send notification to donor
+
             Notification.objects.create(
                 user=donation.donor,
                 notification_type='donation_accepted',
@@ -431,8 +453,7 @@ class DonationViewSet(viewsets.ModelViewSet):
                 message=f'You can now chat with {donation.blood_request.patient.get_full_name()} about the donation',
                 related_id=chat_room.id
             )
-            
-            # Send hospital assignment notification
+
             if best_hospital:
                 Notification.objects.create(
                     user=donation.donor,
@@ -441,32 +462,34 @@ class DonationViewSet(viewsets.ModelViewSet):
                     message=f'Your donation has been scheduled at {best_hospital.name}. Please visit for blood test.',
                     related_id=donation.id
                 )
-            
+
             return Response({
-                'message': 'Donation accepted successfully', 
+                'message': 'Donation accepted successfully',
                 'hospital': HospitalSerializer(best_hospital).data if best_hospital else None,
                 'chat_room_id': chat_room.id
             })
-            
+
         except Donation.DoesNotExist:
             return Response({'error': 'Donation not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            print(f"Error in donation acceptance: {str(e)}")
+            traceback.print_exc()
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+
     def find_best_hospital(self, donor_lat, donor_lng, patient_lat, patient_lng):
         hospitals = Hospital.objects.all()
         best_hospital = None
         min_total_distance = float('inf')
-        
+
         for hospital in hospitals:
             donor_distance = self.calculate_distance(donor_lat, donor_lng, hospital.location_lat, hospital.location_long)
             patient_distance = self.calculate_distance(patient_lat, patient_lng, hospital.location_lat, hospital.location_long)
             total_distance = donor_distance + patient_distance
-            
+
             if total_distance < min_total_distance:
                 min_total_distance = total_distance
                 best_hospital = hospital
-        
+
         return best_hospital
 
     def find_best_hospital_with_ai(self, donor_lat, donor_lng, patient_lat, patient_lng):
@@ -474,12 +497,12 @@ class DonationViewSet(viewsets.ModelViewSet):
             hospitals = Hospital.objects.all()
             if not hospitals:
                 return None
-            
+
             hospital_data = []
             for hospital in hospitals:
                 donor_distance = self.calculate_distance(donor_lat, donor_lng, hospital.location_lat, hospital.location_long)
                 patient_distance = self.calculate_distance(patient_lat, patient_lng, hospital.location_lat, hospital.location_long)
-                
+
                 hospital_data.append({
                     'id': str(hospital.id),
                     'name': hospital.name,
@@ -488,50 +511,50 @@ class DonationViewSet(viewsets.ModelViewSet):
                     'patient_distance': round(patient_distance, 2),
                     'total_distance': round(donor_distance + patient_distance, 2)
                 })
-            
+
             hospital_data.sort(key=lambda x: x['total_distance'])
-            
+
             api_key = settings.OPENAI_API_KEY
             if not api_key:
                 return Hospital.objects.get(id=hospital_data[0]['id'])
-            
+
             headers = {
                 'Authorization': f'Bearer {api_key}',
                 'Content-Type': 'application/json'
             }
-            
+
             prompt = f"""
             Analyze these hospitals and select the best one for a blood donation scenario:
-            
+
             Donor Location: {donor_lat}, {donor_lng}
             Patient Location: {patient_lat}, {patient_lng}
-            
+
             Available Hospitals:
             {json.dumps(hospital_data, indent=2)}
-            
+
             Consider factors like:
             1. Total travel distance (donor + patient)
             2. Balance between donor and patient convenience
             3. Hospital capacity and facilities
             4. Traffic conditions (assume current time)
-            
+
             Return ONLY the hospital ID of the best choice.
             """
-            
+
             data = {
                 'model': 'gpt-3.5-turbo',
                 'messages': [{'role': 'user', 'content': prompt}],
                 'max_tokens': 50,
                 'temperature': 0.1
             }
-            
+
             response = requests.post(
                 'https://api.openai.com/v1/chat/completions',
                 headers=headers,
                 data=json.dumps(data),
                 timeout=10
             )
-            
+
             if response.status_code == 200:
                 result = response.json()
                 hospital_id = result['choices'][0]['message']['content'].strip()
@@ -541,11 +564,12 @@ class DonationViewSet(viewsets.ModelViewSet):
                     return Hospital.objects.get(id=hospital_data[0]['id'])
             else:
                 return Hospital.objects.get(id=hospital_data[0]['id'])
-                
+
         except Exception as e:
             print(f"AI hospital selection failed: {str(e)}")
+            traceback.print_exc()
             return self.find_best_hospital(donor_lat, donor_lng, patient_lat, patient_lng)
-    
+
     def calculate_distance(self, lat1, lng1, lat2, lng2):
         R = 6371
         lat1_rad = radians(lat1)
@@ -554,10 +578,12 @@ class DonationViewSet(viewsets.ModelViewSet):
         lng2_rad = radians(lng2)
         dlat = lat2_rad - lat1_rad
         dlng = lng2_rad - lng1_rad
-        a = sin(dlat/2)**2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlng/2)**2
-        c = 2 * atan2(sqrt(a), sqrt(1-a))
+        a = sin(dlat / 2)**2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlng / 2)**2
+        c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return R * c
-
+    
+    
+    
 class BloodTestViewSet(viewsets.ModelViewSet):
     queryset = BloodTest.objects.all()
     serializer_class = BloodTestSerializer
@@ -682,187 +708,71 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 # Update the HospitalDashboardViewSet class
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
+
+from .models import Donation, Notification
+from .serializers import UserSerializer, BloodTestSerializer, BloodTestUpdateSerializer
+
 class HospitalDashboardViewSet(viewsets.ViewSet):
-    permission_classes = [IsHospitalUserAuthenticated]  # Use custom permission
-    authentication_classes = [HospitalUserAuthentication]
+    permission_classes = [IsHospitalUserAuthenticated]
+    
+    @property
+    def authentication_classes(self):
+        from .authentication import HospitalUserAuthentication
+        return [HospitalUserAuthentication]
     
     def get_queryset(self):
         hospital_user = self.request.user
         hospital = hospital_user.hospital
         
-        return Donation.objects.filter(
+        print(f"Hospital Dashboard accessed for: {hospital.name} (ID: {hospital.id})")
+        
+        # Get all scheduled donations for this hospital
+        donations = Donation.objects.filter(
             hospital=hospital, 
-            status='scheduled',
-            ai_recommended_hospital=True
+            status='scheduled'
         )
+        
+        print(f"Found {donations.count()} scheduled donations for {hospital.name}")
+        
+        for donation in donations:
+            print(f"Donation {donation.id}: Donor={donation.donor.username}, AI Recommended={donation.ai_recommended_hospital}")
+        
+        return donations
     
     @action(detail=False, methods=['get'])
     def donors(self, request):
         donations = self.get_queryset()
         donors_data = []
         
+        print(f"Processing {donations.count()} donations for hospital dashboard")
+        
         for donation in donations:
+            print(f"Processing donation: {donation.id}, Donor: {donation.donor.get_full_name()}")
+            
+            # Get donor details
             donor_data = UserSerializer(donation.donor).data
             donor_data['donation_id'] = donation.id
             donor_data['blood_request_id'] = donation.blood_request.id
             donor_data['donor_name'] = donation.donor.get_full_name()
             donor_data['blood_group'] = donation.blood_request.blood_group
+            donor_data['urgency'] = donation.blood_request.urgency
+            donor_data['units_required'] = donation.blood_request.units_required
+            
+            # Check if blood test already exists
+            if hasattr(donation, 'blood_test'):
+                donor_data['blood_test'] = BloodTestSerializer(donation.blood_test).data
+                donor_data['blood_test_exists'] = True
+            else:
+                donor_data['blood_test_exists'] = False
+            
             donors_data.append(donor_data)
         
-        return Response(donors_data)
-    
-    @action(detail=True, methods=['post'])
-    def submit_blood_test(self, request, pk=None):
-        try:
-            hospital_user = self.request.user
-            hospital = hospital_user.hospital
-            
-            donation = Donation.objects.get(id=pk, hospital=hospital)
-            
-            if hasattr(donation, 'blood_test'):
-                return Response({'error': 'Blood test already submitted for this donation'}, 
-                               status=status.HTTP_400_BAD_REQUEST)
-            
-            serializer = BloodTestSerializer(data=request.data)
-            if serializer.is_valid():
-                blood_test = serializer.save(
-                    donation=donation,
-                    tested_by=hospital
-                )
-                
-                # Close the chat room
-                if hasattr(donation, 'chat_room'):
-                    chat_room = donation.chat_room
-                    chat_room.is_active = False
-                    chat_room.save()
-                
-                # Update donation status
-                donation.status = 'completed'
-                donation.donation_date = timezone.now()
-                donation.save()
-                
-                # Generate health risk prediction using AI
-                health_risk = self.predict_health_risk(blood_test)
-                blood_test.health_risk_prediction = health_risk
-                blood_test.save()
-                
-                # Send notification to donor
-                Notification.objects.create(
-                    user=donation.donor,
-                    notification_type='health_alert',
-                    title='Blood Test Results Available',
-                    message=f'Your blood test results are ready. {health_risk}',
-                    related_id=blood_test.id
-                )
-                
-                # Check if life was saved
-                if blood_test.life_saved:
-                    Notification.objects.create(
-                        user=donation.donor,
-                        notification_type='life_saved',
-                        title='Life Saved! 🎉',
-                        message='Your blood donation has saved a life! Thank you for your heroic contribution.',
-                        related_id=donation.id
-                    )
-                
-                return Response(BloodTestSerializer(blood_test).data)
-            
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
-        except Donation.DoesNotExist:
-            return Response({'error': 'Donation not found or not assigned to your hospital'}, 
-                           status=status.HTTP_404_NOT_FOUND)
-    
-    @action(detail=True, methods=['put'])
-    def update_blood_test(self, request, pk=None):
-        try:
-            hospital_user = self.request.user
-            hospital = hospital_user.hospital
-            
-            donation = Donation.objects.get(id=pk, hospital=hospital)
-            
-            if not hasattr(donation, 'blood_test'):
-                return Response({'error': 'No blood test found for this donation'}, 
-                               status=status.HTTP_404_NOT_FOUND)
-            
-            blood_test = donation.blood_test
-            serializer = BloodTestUpdateSerializer(blood_test, data=request.data, partial=True)
-            
-            if serializer.is_valid():
-                updated_blood_test = serializer.save()
-                
-                # Check if life_saved status changed to True
-                if 'life_saved' in serializer.validated_data and serializer.validated_data['life_saved']:
-                    # Send life saved notification if not already sent
-                    if not Notification.objects.filter(
-                        user=donation.donor,
-                        notification_type='life_saved',
-                        related_id=donation.id
-                    ).exists():
-                        Notification.objects.create(
-                            user=donation.donor,
-                            notification_type='life_saved',
-                            title='Life Saved! 🎉',
-                            message='Your blood donation has saved a life! Thank you for your heroic contribution.',
-                            related_id=donation.id
-                        )
-                
-                return Response(BloodTestSerializer(updated_blood_test).data)
-            
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
-        except Donation.DoesNotExist:
-            return Response({'error': 'Donation not found or not assigned to your hospital'}, 
-                           status=status.HTTP_404_NOT_FOUND)
-    
-    def predict_health_risk(self, blood_test):
-        try:
-            api_key = settings.OPENAI_API_KEY
-            if not api_key:
-                return "Could not analyze blood test results at this time. Please consult a doctor."
-            
-            headers = {
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            }
-            
-            prompt = f"""
-            Analyze these blood test results and provide a health risk assessment:
-            - Sugar Level: {blood_test.sugar_level} mg/dL (Normal: 70-100 mg/dL)
-            - Uric Acid Level: {blood_test.uric_acid_level} mg/dL (Normal: 3.4-7.0 mg/dL for men, 2.4-6.0 mg/dL for women)
-            - WBC Count: {blood_test.wbc_count} cells/mcL (Normal: 4,500-11,000 cells/mcL)
-            - RBC Count: {blood_test.rbc_count} million cells/mcL (Normal: 4.7-6.1 million cells/mcL for men, 4.2-5.4 million cells/mcL for women)
-            - Hemoglobin: {blood_test.hemoglobin} g/dL (Normal: 13.5-17.5 g/dL for men, 12.0-15.5 g/dL for women)
-            - Platelet Count: {blood_test.platelet_count} platelets/mcL (Normal: 150,000-450,000 platelets/mcL)
-            
-            Provide a concise assessment of any potential health risks or abnormalities.
-            Focus on actionable insights and recommendations.
-            """
-            
-            data = {
-                'model': 'gpt-3.5-turbo',
-                'messages': [{'role': 'user', 'content': prompt}],
-                'max_tokens': 300,
-                'temperature': 0.3
-            }
-            
-            response = requests.post(
-                'https://api.openai.com/v1/chat/completions',
-                headers=headers,
-                data=json.dumps(data),
-                timeout=15
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result['choices'][0]['message']['content'].strip()
-            else:
-                return "Could not analyze blood test results at this time. Please consult a doctor."
-                
-        except Exception as e:
-            return f"Error analyzing blood test: {str(e)}"
-        
-        
+        return Response(donors_data)      
         
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
