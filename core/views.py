@@ -753,56 +753,49 @@ import traceback
 
 class HospitalDashboardViewSet(viewsets.ViewSet):
     permission_classes = [IsHospitalUserAuthenticated]
-
+    
     @property
     def authentication_classes(self):
         from .authentication import HospitalUserAuthentication
         return [HospitalUserAuthentication]
-
+    
     def get_queryset(self):
         hospital_user = self.request.user
         hospital = hospital_user.hospital
-
-        print(f"Hospital Dashboard accessed for: {hospital.name} (ID: {hospital.id})")
-
+        
+        # Get all scheduled AND completed donations for this hospital
         donations = Donation.objects.filter(
-            hospital=hospital,
-            status='scheduled'
+            hospital=hospital
+        ).filter(
+            Q(status='scheduled') | Q(status='completed')
         )
-
-        print(f"Found {donations.count()} scheduled donations for {hospital.name}")
-
-        for donation in donations:
-            print(f"Donation {donation.id}: Donor={donation.donor.username}, AI Recommended={donation.ai_recommended_hospital}")
-
+        
         return donations
-
+    
     @action(detail=False, methods=['get'])
     def donors(self, request):
         donations = self.get_queryset()
         donors_data = []
-
-        print(f"Processing {donations.count()} donations for hospital dashboard")
-
+        
         for donation in donations:
-            print(f"Processing donation: {donation.id}, Donor: {donation.donor.get_full_name()}")
-
             donor_data = UserSerializer(donation.donor).data
             donor_data['donation_id'] = donation.id
             donor_data['blood_request_id'] = donation.blood_request.id
             donor_data['donor_name'] = donation.donor.get_full_name()
             donor_data['blood_group'] = donation.blood_request.blood_group
-            donor_data['urgency'] = donation.blood_request.urgency
-            donor_data['units_required'] = donation.blood_request.units_required
-
+            donor_data['donation_status'] = donation.status
+            
+            # Check if blood test already exists
             if hasattr(donation, 'blood_test'):
                 donor_data['blood_test'] = BloodTestSerializer(donation.blood_test).data
                 donor_data['blood_test_exists'] = True
+                donor_data['life_saved'] = donation.blood_test.life_saved
             else:
                 donor_data['blood_test_exists'] = False
-
+                donor_data['life_saved'] = False
+            
             donors_data.append(donor_data)
-
+        
         return Response(donors_data)
 
     @action(detail=True, methods=['post'])
@@ -892,29 +885,27 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
             traceback.print_exc()
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @action(detail=True, methods=['put'], url_path='update-blood-test')
+    @action(detail=True, methods=['put'])
     def update_blood_test(self, request, pk=None):
         try:
             hospital_user = self.request.user
             hospital = hospital_user.hospital
-
-            print(f"Updating blood test for donation ID: {pk}")
-
+            
             donation = Donation.objects.get(id=pk, hospital=hospital)
-
+            
             if not hasattr(donation, 'blood_test'):
-                print("No blood test found for this donation")
-                return Response({'error': 'No blood test found for this donation'},
-                                status=status.HTTP_404_NOT_FOUND)
-
+                return Response({'error': 'No blood test found for this donation'}, 
+                            status=status.HTTP_404_NOT_FOUND)
+            
             blood_test = donation.blood_test
             serializer = BloodTestUpdateSerializer(blood_test, data=request.data, partial=True)
-
+            
             if serializer.is_valid():
                 updated_blood_test = serializer.save()
-                print(f"Blood test updated: {blood_test.id}")
-
+                
+                # Check if life_saved status changed to True
                 if 'life_saved' in serializer.validated_data and serializer.validated_data['life_saved']:
+                    # Send life saved notification if not already sent
                     if not Notification.objects.filter(
                         user=donation.donor,
                         notification_type='life_saved',
@@ -928,19 +919,16 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
                             related_id=donation.id
                         )
                         print("Life saved notification sent")
-
+                
                 return Response(BloodTestSerializer(updated_blood_test).data)
-
-            print(f"Serializer errors: {serializer.errors}")
+            
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+            
         except Donation.DoesNotExist:
-            print(f"Donation not found or not assigned to this hospital: {pk}")
-            return Response({'error': 'Donation not found or not assigned to your hospital'},
-                            status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Donation not found or not assigned to your hospital'}, 
+                        status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             print(f"Error in update_blood_test: {str(e)}")
-            traceback.print_exc()
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def predict_health_risk(self, blood_test):
