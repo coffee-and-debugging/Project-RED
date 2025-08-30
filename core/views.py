@@ -751,195 +751,117 @@ from .serializers import UserSerializer, BloodTestSerializer, BloodTestUpdateSer
 from .permissions import IsHospitalUserAuthenticated
 import traceback
 
+from django.db.models import Q
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from .models import Donation, BloodTest, Notification
+from .serializers import UserSerializer, BloodTestSerializer, BloodTestUpdateSerializer
+from .authentication import HospitalUserAuthentication
+from .permissions import IsHospitalUserAuthenticated
+from django.utils import timezone
+
+# Update the HospitalDashboardViewSet to filter by current hospital
 class HospitalDashboardViewSet(viewsets.ViewSet):
     permission_classes = [IsHospitalUserAuthenticated]
-    
+
     @property
     def authentication_classes(self):
         from .authentication import HospitalUserAuthentication
         return [HospitalUserAuthentication]
     
-    def get_queryset(self):
-        hospital_user = self.request.user
-        hospital = hospital_user.hospital
+    def list(self, request):
+        # Get the hospital from the authenticated hospital user
+        hospital = request.user.hospital
         
-        # Get all scheduled AND completed donations for this hospital
-        donations = Donation.objects.filter(
-            hospital=hospital
-        ).filter(
-            Q(status='scheduled') | Q(status='completed')
-        )
+        # Get assignments for this hospital
+        assignments = DonorHospitalAssignment.objects.filter(
+            hospital=hospital,
+            status__in=['scheduled', 'pending']
+        ).select_related('donor', 'donation', 'donation__blood_test')
         
-        return donations
-    
-    @action(detail=False, methods=['get'])
-    def donors(self, request):
-        donations = self.get_queryset()
         donors_data = []
-        
-        for donation in donations:
-            donor_data = UserSerializer(donation.donor).data
-            donor_data['donation_id'] = donation.id
-            donor_data['blood_request_id'] = donation.blood_request.id
-            donor_data['donor_name'] = donation.donor.get_full_name()
-            donor_data['blood_group'] = donation.blood_request.blood_group
-            donor_data['donation_status'] = donation.status
+        for assignment in assignments:
+            donor = assignment.donor
+            donation = assignment.donation
+            blood_test_exists = hasattr(donation, 'blood_test')
             
-            # Check if blood test already exists
-            if hasattr(donation, 'blood_test'):
-                donor_data['blood_test'] = BloodTestSerializer(donation.blood_test).data
-                donor_data['blood_test_exists'] = True
-                donor_data['life_saved'] = donation.blood_test.life_saved
-            else:
-                donor_data['blood_test_exists'] = False
-                donor_data['life_saved'] = False
-            
-            donors_data.append(donor_data)
+            donors_data.append({
+                'id': donor.id,
+                'first_name': donor.first_name,
+                'last_name': donor.last_name,
+                'blood_group': donor.blood_group,
+                'age': donor.age,
+                'gender': donor.gender,
+                'phone_number': donor.phone_number,
+                'address': donor.address,
+                'donation_id': donation.id,
+                'assignment_id': assignment.id,
+                'donation_status': donation.status,
+                'assignment_status': assignment.status,
+                'blood_test_exists': blood_test_exists,
+                'blood_test': BloodTestSerializer(donation.blood_test).data if blood_test_exists else None,
+                'life_saved': donation.blood_test.life_saved if blood_test_exists else False,
+                'assigned_at': assignment.assigned_at,
+                'ai_recommended': assignment.ai_recommended
+            })
         
         return Response(donors_data)
-
+    
     @action(detail=True, methods=['post'])
     def submit_blood_test(self, request, pk=None):
+        # pk is the assignment_id now
         try:
-            hospital_user = self.request.user
-            hospital = hospital_user.hospital
+            assignment = DonorHospitalAssignment.objects.get(id=pk, hospital=request.user.hospital)
+            donation = assignment.donation
             
-            print(f"Submitting blood test for donation ID: {pk}")
-            
-            # Get the donation
-            donation = Donation.objects.get(id=pk, hospital=hospital)
-            print(f"Found donation: {donation.id}, Donor: {donation.donor.username}")
-            
-            if hasattr(donation, 'blood_test'):
-                return Response({'error': 'Blood test already submitted for this donation'}, 
-                            status=status.HTTP_400_BAD_REQUEST)
-            
-            # Create the blood test object directly
-            blood_test = BloodTest.objects.create(
+            # Create or update blood test
+            blood_test, created = BloodTest.objects.get_or_create(
                 donation=donation,
-                tested_by=hospital,
-                sugar_level=request.data.get('sugar_level'),
-                uric_acid_level=request.data.get('uric_acid_level'),
-                wbc_count=request.data.get('wbc_count'),
-                rbc_count=request.data.get('rbc_count'),
-                hemoglobin=request.data.get('hemoglobin'),
-                platelet_count=request.data.get('platelet_count'),
-                life_saved=request.data.get('life_saved', False)
+                defaults={ 
+                    'tested_by': request.user.hospital,
+                    **request.data
+                }
             )
             
-            print(f"Blood test created: {blood_test.id}")
+            if not created:
+                for attr, value in request.data.items():
+                    setattr(blood_test, attr, value)
+                blood_test.save()
             
-            # Close the chat room
-            if hasattr(donation, 'chat_room'):
-                chat_room = donation.chat_room
-                chat_room.is_active = False
-                chat_room.save()
-                print(f"Chat room closed: {chat_room.id}")
+            # Update assignment status to completed
+            assignment.status = 'completed'
+            assignment.completed_at = timezone.now()
+            assignment.save()
             
-            # Update donation status
+            # Also update donation status
             donation.status = 'completed'
-            donation.donation_date = timezone.now()
             donation.save()
-            print(f"Donation status updated to completed")
-            
-            # Generate health risk prediction using AI
-            health_risk = self.predict_health_risk(blood_test)
-            blood_test.health_risk_prediction = health_risk
-            blood_test.save()
-            print(f"Health risk prediction added: {health_risk[:100]}...")
-            
-            # In submit_blood_test method, add debug info
-            print(f"Donor username: {donation.donor.username}")
-            print(f"Donor ID: {donation.donor.id}")
-            
-            # Send notification to donor
-            notification = Notification.objects.create(
-                user=donation.donor,
-                notification_type='health_alert',
-                title='Blood Test Results Available',
-                message=f'Your blood test results are ready. {health_risk}',
-                related_id=blood_test.id
-            )
-            print(f"Notification created: ID={notification.id}, User={notification.user.username}, Message={notification.message[:50]}...")
-            
-            # Check if life was saved
-            if blood_test.life_saved:
-                Notification.objects.create(
-                    user=donation.donor,
-                    notification_type='life_saved',
-                    title='Life Saved! 🎉',
-                    message='Your blood donation has saved a life! Thank you for your heroic contribution.',
-                    related_id=donation.id
-                )
-                print("Life saved notification sent")
             
             return Response(BloodTestSerializer(blood_test).data)
             
-        except Donation.DoesNotExist:
-            print(f"Donation not found or not assigned to this hospital: {pk}")
-            return Response({'error': 'Donation not found or not assigned to your hospital'}, 
-                        status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            print(f"Error in submit_blood_test: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        except DonorHospitalAssignment.DoesNotExist:
+            return Response({'error': 'Assignment not found'}, status=404)
+    
     @action(detail=True, methods=['put'])
     def update_blood_test(self, request, pk=None):
+        # Similar to submit_blood_test but for updates
         try:
-            hospital_user = self.request.user
-            hospital = hospital_user.hospital
-            
-            donation = Donation.objects.get(id=pk, hospital=hospital)
+            assignment = DonorHospitalAssignment.objects.get(id=pk, hospital=request.user.hospital)
+            donation = assignment.donation
             
             if not hasattr(donation, 'blood_test'):
-                return Response({'error': 'No blood test found for this donation'}, 
-                            status=status.HTTP_404_NOT_FOUND)
-            
+                return Response({'error': 'Blood test not found'}, status=404)
+                
             blood_test = donation.blood_test
-            serializer = BloodTestUpdateSerializer(blood_test, data=request.data, partial=True)
+            for attr, value in request.data.items():
+                setattr(blood_test, attr, value)
+            blood_test.save()
             
-            if serializer.is_valid():
-                updated_blood_test = serializer.save()
-                
-                # Check if life_saved status changed to True
-                if 'life_saved' in serializer.validated_data and serializer.validated_data['life_saved']:
-                    # Send life saved notification if not already sent
-                    if not Notification.objects.filter(
-                        user=donation.donor,
-                        notification_type='life_saved',
-                        related_id=donation.id
-                    ).exists():
-                        Notification.objects.create(
-                            user=donation.donor,
-                            notification_type='life_saved',
-                            title='Life Saved! 🎉',
-                            message='Your blood donation has saved a life! Thank you for your heroic contribution.',
-                            related_id=donation.id
-                        )
-                        print("Life saved notification sent")
-                
-                return Response(BloodTestSerializer(updated_blood_test).data)
+            return Response(BloodTestSerializer(blood_test).data)
             
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
-        except Donation.DoesNotExist:
-            return Response({'error': 'Donation not found or not assigned to your hospital'}, 
-                        status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            print(f"Error in update_blood_test: {str(e)}")
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def predict_health_risk(self, blood_test):
-        """
-        Stub method for AI-based health risk prediction.
-        Replace this with real AI integration logic.
-        """
-        print("Running AI health prediction...")
-        # Placeholder logic
-        return "You are in good health based on your test results."
-
+        except DonorHospitalAssignment.DoesNotExist:
+            return Response({'error': 'Assignment not found'}, status=404)
 
 
      
@@ -1189,3 +1111,23 @@ def submit_blood_test(self, request, pk=None):
         import traceback
         traceback.print_exc()
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+from .models import DonorHospitalAssignment
+from .serializers import DonorHospitalAssignmentSerializer
+
+class DonorHospitalAssignmentViewSet(viewsets.ModelViewSet):
+    queryset = DonorHospitalAssignment.objects.all()
+    serializer_class = DonorHospitalAssignmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        # Hospital users can only see assignments for their hospital
+        if hasattr(self.request.user, 'hospital'):
+            return DonorHospitalAssignment.objects.filter(hospital=self.request.user.hospital)
+        # Regular users can only see their own assignments
+        elif hasattr(self.request.user, 'blood_group'):  # Regular user
+            return DonorHospitalAssignment.objects.filter(donor=self.request.user)
+        return DonorHospitalAssignment.objects.none()
+    
+    def perform_create(self, serializer):
+        serializer.save()

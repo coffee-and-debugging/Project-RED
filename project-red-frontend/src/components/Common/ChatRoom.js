@@ -103,24 +103,6 @@ const ChatRoom = () => {
       // Sort by distance (nearest first)
       hospitalData.sort((a, b) => a.distance - b.distance);
 
-      // Use AI to select the best hospital considering multiple factors
-      const prompt = `
-        Analyze these hospitals and select the best one for a blood donation scenario:
-        
-        Donor Location: ${donorLat}, ${donorLng}
-        
-        Available Hospitals:
-        ${JSON.stringify(hospitalData, null, 2)}
-        
-        Consider factors like:
-        1. Distance from donor (most important)
-        2. Hospital capacity and facilities
-        3. Traffic conditions (assume current time)
-        4. Historical success rate for blood donations
-        
-        Return ONLY the hospital ID of the best choice.
-      `;
-
       // For now, we'll use the closest hospital as a fallback
       // In a real implementation, you would call the OpenAI API here
       return hospitalData[0]; // Return the closest hospital
@@ -170,13 +152,32 @@ const ChatRoom = () => {
                 hospitals
               );
               
+              
+              
+                            // Update the hospital assignment part
               if (bestHospital) {
                 setSuggestedHospital(bestHospital);
                 
-                // Update the donation with the suggested hospital
-                await api.patch(`/donations/${donationResponse.data.id}/`, {
-                  hospital: bestHospital.id
-                });
+                try {
+                  // Create donor-hospital assignment
+                  await api.post('/donor-hospital-assignments/', {
+                    donor: donor.id,
+                    hospital: bestHospital.id,
+                    donation: donationResponse.data.id,
+                    ai_recommended: true,
+                    status: 'scheduled'
+                  });
+                  
+                  // Also update the donation for backward compatibility
+                  await api.patch(`/donations/${donationResponse.data.id}/`, {
+                    hospital: bestHospital.id,
+                    ai_recommended_hospital: true,
+                    status: 'scheduled'
+                  });
+                  
+                } catch (err) {
+                  console.error('Error creating hospital assignment:', err);
+                }
               }
             }
           }

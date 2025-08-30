@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
-from .models import User, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification, HospitalUser
+from .models import User, DonorHospitalAssignment, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification, HospitalUser
 import requests
 from django.conf import settings
 import json
@@ -214,3 +214,15 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = '__all__'
+        
+        
+class DonorHospitalAssignmentSerializer(serializers.ModelSerializer):
+    donor_name = serializers.CharField(source='donor.get_full_name', read_only=True)
+    donor_blood_group = serializers.CharField(source='donor.blood_group', read_only=True)
+    hospital_name = serializers.CharField(source='hospital.name', read_only=True)
+    donation_id = serializers.UUIDField(source='donation.id', read_only=True)
+    
+    class Meta:
+        model = DonorHospitalAssignment
+        fields = '__all__'
+        read_only_fields = ('assigned_at', 'completed_at')

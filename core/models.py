@@ -202,3 +202,28 @@ class Notification(models.Model):
     
     def __str__(self):
         return f"{self.notification_type} notification for {self.user.username}"
+    
+    
+# Add this model to your models.py
+class DonorHospitalAssignment(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('scheduled', 'Scheduled'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    donor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hospital_assignments')
+    hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='donor_assignments')
+    donation = models.ForeignKey(Donation, on_delete=models.CASCADE, related_name='hospital_assignments')
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    ai_recommended = models.BooleanField(default=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+    
+    class Meta:
+        unique_together = ['donor', 'hospital', 'donation']
+    
+    def __str__(self):
+        return f"{self.donor.username} -> {self.hospital.name} (Donation: {self.donation.id})"

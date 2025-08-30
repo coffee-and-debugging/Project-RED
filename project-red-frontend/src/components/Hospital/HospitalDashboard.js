@@ -90,6 +90,7 @@ const HospitalDashboard = () => {
     setHospitalInfo(hospitalUser?.hospital);
   };
 
+  // Update the fetchDonors function
   const fetchDonors = async () => {
     try {
       const response = await hospitalApi.get('/hospital-dashboard/donors/');
@@ -141,13 +142,14 @@ const HospitalDashboard = () => {
     setEditTestDialog(true);
   };
 
+  // Update the API calls to use assignment IDs instead of donation IDs
   const handleBloodTestSubmit = async () => {
     try {
       setLoading(true);
       setError('');
 
       const response = await hospitalApi.post(
-        `/hospital-dashboard/${selectedDonor.donation_id}/submit_blood_test/`,
+        `/hospital-dashboard/assignments/${selectedDonor.assignment_id}/submit_blood_test/`,
         bloodTestData
       );
 
@@ -169,7 +171,7 @@ const HospitalDashboard = () => {
       setError('');
 
       const response = await hospitalApi.put(
-        `/hospital-dashboard/${selectedDonor.donation_id}/update_blood_test/`,
+        `/hospital-dashboard/assignments/${selectedDonor.assignment_id}/update_blood_test/`,
         bloodTestData
       );
 

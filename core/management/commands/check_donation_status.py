@@ -20,14 +20,14 @@ class Command(BaseCommand):
                 f"AI Recommended={donation.ai_recommended_hospital}"
             )
         
-        # Check Hello Hospital specifically
+        # Check cmc specifically
         try:
-            hello_hospital = Hospital.objects.get(name="Hello Hospital")
-            self.stdout.write(f"\nHello Hospital found: ID={hello_hospital.id}")
+            cmc = Hospital.objects.get(name="CMC")
+            self.stdout.write(f"\ncmc found: ID={cmc.id}")
             
-            # Check donations for Hello Hospital
-            hospital_donations = Donation.objects.filter(hospital=hello_hospital)
-            self.stdout.write(f"Donations for Hello Hospital: {hospital_donations.count()}")
+            # Check donations for cmc
+            hospital_donations = Donation.objects.filter(hospital=cmc)
+            self.stdout.write(f"Donations for CMC: {hospital_donations.count()}")
             
             for donation in hospital_donations:
                 self.stdout.write(
@@ -38,4 +38,4 @@ class Command(BaseCommand):
                 )
                 
         except Hospital.DoesNotExist:
-            self.stdout.write("Hello Hospital not found in database")
+            self.stdout.write("CMC not found in database")
