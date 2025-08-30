@@ -343,17 +343,19 @@ class BloodRequestViewSet(viewsets.ModelViewSet):
         return Response(donors_with_distance)
 
 class DonationViewSet(viewsets.ModelViewSet):
-    queryset = Donation.objects.all()
+    queryset = Donation.objects.all().select_related(
+        'donor', 'blood_request', 'blood_request__patient', 'hospital'
+    )
     serializer_class = DonationSerializer
-    permission_classes = [IsAuthenticated]
-
+    permission_classes = [permissions.IsAuthenticated]
+    
     def get_queryset(self):
-        if self.request.user.is_staff:
-            return Donation.objects.all()
-        return Donation.objects.filter(
-            Q(donor=self.request.user) | 
-            Q(blood_request__patient=self.request.user)
-        )
+        # Users can only see their own donations
+        if self.request.user.is_authenticated:
+            return Donation.objects.filter(donor=self.request.user).select_related(
+                'blood_request', 'blood_request__patient', 'hospital'
+            )
+        return Donation.objects.none()
 
     def perform_create(self, serializer):
         blood_request = serializer.validated_data['blood_request']
@@ -819,13 +821,31 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
                     logger.error(f"Error generating AI prediction: {str(e)}")
                     # Continue without prediction
             
-            # DON'T automatically change assignment status to completed
-            # Let the hospital staff manually mark it as completed when they're done
-            
-            # Only update donation status if it's still pending
-            if donation.status == 'pending':
-                donation.status = 'scheduled'
-                donation.save()
+            # DESTROY CHATROOM when blood test is completed
+            try:
+                chat_room = ChatRoom.objects.get(donation=donation)
+                chat_room.is_active = False  # Soft delete instead of hard delete
+                chat_room.save()
+                
+                # Optional: Send a notification to both users
+                Notification.objects.create(
+                    user=donor,
+                    notification_type='donation_completed',
+                    title='Chat Room Closed',
+                    message='The chat room for your donation has been closed as the blood test is completed.',
+                    related_id=donation.id
+                )
+                
+                Notification.objects.create(
+                    user=donation.blood_request.patient,
+                    notification_type='donation_completed',
+                    title='Chat Room Closed',
+                    message='The chat room for your blood request has been closed as the donation process is completed.',
+                    related_id=donation.id
+                )
+                
+            except ChatRoom.DoesNotExist:
+                logger.warning(f"No chat room found for donation {donation.id}")
             
             return Response(BloodTestSerializer(blood_test).data)
             
@@ -898,24 +918,22 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['post'])
     def mark_as_completed(self, request, pk=None):
         try:
-            assignment = DonorHospitalAssignment.objects.get(id=pk, hospital=request.user.hospital)
+            assignment = self.get_object()
             donation = assignment.donation
             
-            # Update assignment status to completed
             assignment.status = 'completed'
             assignment.completed_at = timezone.now()
             assignment.save()
             
-            # Also update donation status
             donation.status = 'completed'
             donation.save()
             
             return Response({'status': 'completed'})
             
-        except DonorHospitalAssignment.DoesNotExist:
-            return Response({'error': 'Assignment not found'}, status=404)
-
-
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+    
+    
 class DonorHospitalAssignmentViewSet(viewsets.ModelViewSet):
     queryset = DonorHospitalAssignment.objects.all()
     serializer_class = DonorHospitalAssignmentSerializer

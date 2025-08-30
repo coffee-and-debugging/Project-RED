@@ -137,8 +137,20 @@ class Donation(models.Model):
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='donations', null=True, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     donation_date = models.DateTimeField(blank=True, null=True)
-    ai_recommended_hospital = models.BooleanField(default=False)  # Track if hospital was AI recommended
+    ai_recommended_hospital = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    def save(self, *args, **kwargs):
+        if self.pk:
+            try:
+                old_instance = Donation.objects.get(pk=self.pk)
+                if old_instance.status != 'completed' and self.status == 'completed':
+                    from django.utils import timezone
+                    self.donation_date = timezone.now()
+            except Donation.DoesNotExist:
+                pass
+        
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"Donation by {self.donor.username} for {self.blood_request.patient.username}"

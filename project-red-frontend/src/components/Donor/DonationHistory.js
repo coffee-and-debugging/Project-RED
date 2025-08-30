@@ -72,7 +72,7 @@ const DonationHistory = () => {
                   primary={
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Typography variant="subtitle1">
-                        Donation for {donation.blood_request?.patient_name || 'Unknown Patient'}
+                        Donation for {donation.patient_name || 'Unknown Patient'}
                       </Typography>
                       <Chip
                         label={donation.status}
@@ -84,7 +84,7 @@ const DonationHistory = () => {
                   secondary={
                     <Box sx={{ mt: 1 }}>
                       <Typography variant="body2">
-                        <strong>Blood Type:</strong> {donation.blood_request?.blood_group}
+                        <strong>Patient Blood Type:</strong> {donation.patient_blood_group || 'Not specified'}
                       </Typography>
                       <Typography variant="body2">
                         <strong>Hospital:</strong> {donation.hospital_name || 'Not assigned'}
@@ -95,6 +95,11 @@ const DonationHistory = () => {
                       {donation.blood_test && (
                         <Typography variant="body2" color="primary">
                           <strong>Blood Test Completed:</strong> Yes
+                        </Typography>
+                      )}
+                      {donation.life_saved && (
+                        <Typography variant="body2" color="error">
+                          <strong>Life Saved:</strong> Yes 🎉
                         </Typography>
                       )}
                     </Box>

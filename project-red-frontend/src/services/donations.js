@@ -7,7 +7,7 @@ export const donationService = {
   },
 
   getDonations: async () => {
-    const response = await api.get('/donations/');
+    const response = await api.get('/donations/?expand=blood_request.patient,hospital');
     return response;
   },
 

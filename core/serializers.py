@@ -168,16 +168,14 @@ class BloodRequestSerializer(serializers.ModelSerializer):
 class DonationSerializer(serializers.ModelSerializer):
     donor_name = serializers.CharField(source='donor.get_full_name', read_only=True)
     patient_name = serializers.CharField(source='blood_request.patient.get_full_name', read_only=True)
+    patient_blood_group = serializers.CharField(source='blood_request.blood_group', read_only=True)
     hospital_name = serializers.CharField(source='hospital.name', read_only=True)
+    donation_date = serializers.DateTimeField(format='%Y-%m-%d %H:%M', read_only=True)
     
     class Meta:
         model = Donation
         fields = '__all__'
         read_only_fields = ('donor', 'hospital', 'status')
-
-    def create(self, validated_data):
-        validated_data['donor'] = self.context['request'].user
-        return super().create(validated_data)
 
 class BloodTestSerializer(serializers.ModelSerializer):
     donor_name = serializers.CharField(source='donation.donor.get_full_name', read_only=True)
