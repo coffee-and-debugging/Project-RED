@@ -21,7 +21,8 @@ import {
   LocalHospital as HospitalIcon,
   Favorite as FavoriteIcon,
   Warning as WarningIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  Bloodtype as BloodtypeIcon
 } from '@mui/icons-material';
 import { notificationService } from '../../services/notifications';
 import { useAuth } from '../../contexts/AuthContext';
@@ -90,6 +91,8 @@ const Notifications = () => {
         return <WarningIcon color="warning" />;
       case 'hospital_assigned':
         return <HospitalIcon color="primary" />;
+      case 'blood_request':
+        return <BloodtypeIcon color="error" />;
       default:
         return <InfoIcon color="info" />;
     }
@@ -103,6 +106,8 @@ const Notifications = () => {
         return 'warning';
       case 'hospital_assigned':
         return 'primary';
+      case 'blood_request':
+        return 'default';
       default:
         return 'default';
     }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LocalHospital as LocalHospitalIcon } from '@mui/icons-material';
 import {
   Container,
   Typography,
@@ -23,7 +24,8 @@ import {
 import {
   LocalHospital as HospitalIcon,
   CheckCircle as CheckCircleIcon,
-  Edit as EditIcon
+  Edit as EditIcon,
+  Insights as InsightsIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { hospitalApi } from '../../services/api';
@@ -62,6 +64,8 @@ const HospitalDashboard = () => {
   const [success, setSuccess] = useState('');
   const [hospitalInfo, setHospitalInfo] = useState(null);
   const [tabValue, setTabValue] = useState(0);
+  const [showPredictionDialog, setShowPredictionDialog] = useState(false);
+  const [currentPrediction, setCurrentPrediction] = useState(null);
 
   const navigate = useNavigate();
 
@@ -73,14 +77,14 @@ const HospitalDashboard = () => {
   useEffect(() => {
     // Filter donors based on selected tab
     if (tabValue === 0) {
-      // Pending tests (no blood test or scheduled status)
-      setFilteredDonors(donors.filter(donor => 
-        !donor.blood_test_exists || donor.donation_status === 'scheduled'
+      // Pending tests (no blood test or not completed)
+      setFilteredDonors(donors.filter(donor =>
+        !donor.blood_test_exists || donor.assignment_status !== 'completed'
       ));
     } else {
-      // Completed tests
-      setFilteredDonors(donors.filter(donor => 
-        donor.blood_test_exists && donor.donation_status === 'completed'
+      // Completed tests (has blood test and assignment completed)
+      setFilteredDonors(donors.filter(donor =>
+        donor.blood_test_exists && donor.assignment_status === 'completed'
       ));
     }
   }, [donors, tabValue]);
@@ -90,7 +94,6 @@ const HospitalDashboard = () => {
     setHospitalInfo(hospitalUser?.hospital);
   };
 
-  // Update the fetchDonors function
   const fetchDonors = async () => {
     try {
       const response = await hospitalApi.get('/hospital-dashboard/donors/');
@@ -142,7 +145,6 @@ const HospitalDashboard = () => {
     setEditTestDialog(true);
   };
 
-  // Update the API calls to use assignment IDs instead of donation IDs
   const handleBloodTestSubmit = async () => {
     try {
       setLoading(true);
@@ -189,6 +191,28 @@ const HospitalDashboard = () => {
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
+  };
+
+  // Mark assignment as completed
+  const markAsCompleted = async (assignmentId) => {
+    try {
+      setLoading(true);
+      await hospitalApi.post(`/hospital-dashboard/assignments/${assignmentId}/mark_completed/`);
+      setSuccess('Assignment marked as completed successfully!');
+      fetchDonors();
+    } catch (error) {
+      setError('Failed to mark as completed: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Show the prediction for a donor
+  const showPrediction = (donor) => {
+    if (donor.blood_test && donor.blood_test.disease_prediction) {
+      setCurrentPrediction(donor.blood_test);
+      setShowPredictionDialog(true);
+    }
   };
 
   return (
@@ -250,21 +274,49 @@ const HospitalDashboard = () => {
                       <Typography variant="body2">
                         <strong>Address:</strong> {donor.address}
                       </Typography>
-                      <Chip 
-                        label={donor.donation_status} 
-                        color={donor.donation_status === 'completed' ? 'success' : 'info'} 
-                        size="small" 
-                        sx={{ mt: 1 }}
-                      />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                        <Chip 
+                          label={`Donation: ${donor.donation_status}`} 
+                          color={donor.donation_status === 'completed' ? 'success' : 'info'} 
+                          size="small" 
+                        />
+                        <Chip 
+                          label={`Assignment: ${donor.assignment_status}`} 
+                          color={donor.assignment_status === 'completed' ? 'success' : 'warning'} 
+                          size="small" 
+                        />
+                      </Box>
                     </Box>
-                    <Button
-                      variant="contained"
-                      onClick={() => openBloodTestDialog(donor)}
-                      startIcon={<HospitalIcon />}
-                      sx={{ backgroundColor: '#d32f2f' }}
-                    >
-                      Submit Blood Test
-                    </Button>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <Button
+                        variant="contained"
+                        onClick={() => openBloodTestDialog(donor)}
+                        startIcon={<HospitalIcon />}
+                        sx={{ backgroundColor: '#d32f2f' }}
+                      >
+                        Submit Blood Test
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={() => showPrediction(donor)}
+                        startIcon={<InsightsIcon />}
+                        disabled={!donor.blood_test_exists || !donor.blood_test?.disease_prediction}
+                        sx={{ mr: 1 }}
+                      >
+                        View Prediction
+                      </Button>
+                      {donor.assignment_status !== 'completed' && (
+                        <Button
+                          variant="contained"
+                          color="success"
+                          onClick={() => markAsCompleted(donor.assignment_id)}
+                          startIcon={<CheckCircleIcon />}
+                          sx={{ ml: 1 }}
+                        >
+                          Mark Completed
+                        </Button>
+                      )}
+                    </Box>
                   </Box>
                 </CardContent>
               </Card>
@@ -343,6 +395,43 @@ const HospitalDashboard = () => {
         )}
       </TabPanel>
 
+      {/* Prediction Dialog */}
+      <Dialog open={showPredictionDialog} onClose={() => setShowPredictionDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <LocalHospitalIcon color="primary" />
+            <Typography variant="h6">Health Prediction</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {currentPrediction && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="h6" gutterBottom color="primary">
+                AI Health Assessment
+              </Typography>
+              {currentPrediction.prediction_confidence && (
+                <Chip 
+                  label={`Confidence: ${currentPrediction.prediction_confidence}%`} 
+                  color="info" 
+                  sx={{ mb: 2 }}
+                />
+              )}
+              <Typography variant="body1" paragraph sx={{ fontWeight: 'bold' }}>
+                {currentPrediction.disease_prediction}
+              </Typography>
+              <Paper variant="outlined" sx={{ p: 2, backgroundColor: '#f5f5f5' }}>
+                <Typography variant="body2" style={{ whiteSpace: 'pre-wrap' }}>
+                  {currentPrediction.health_risk_prediction}
+                </Typography>
+              </Paper>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowPredictionDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Blood Test Dialog */}
       <Dialog open={bloodTestDialog} onClose={() => setBloodTestDialog(false)} maxWidth="md" fullWidth>
         <DialogTitle>Submit Blood Test Results</DialogTitle>
@@ -352,7 +441,7 @@ const HospitalDashboard = () => {
               For: {selectedDonor.first_name} {selectedDonor.last_name} ({selectedDonor.blood_group})
             </Typography>
           )}
-          
+
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -442,7 +531,7 @@ const HospitalDashboard = () => {
               For: {selectedDonor.first_name} {selectedDonor.last_name} ({selectedDonor.blood_group})
             </Typography>
           )}
-          
+
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6}>
               <TextField

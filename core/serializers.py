@@ -181,13 +181,16 @@ class DonationSerializer(serializers.ModelSerializer):
 
 class BloodTestSerializer(serializers.ModelSerializer):
     donor_name = serializers.CharField(source='donation.donor.get_full_name', read_only=True)
+    donor_age = serializers.IntegerField(source='donation.donor.age', read_only=True)
+    donor_gender = serializers.CharField(source='donation.donor.gender', read_only=True)
     hospital_name = serializers.CharField(source='tested_by.name', read_only=True)
     
     class Meta:
         model = BloodTest
         fields = '__all__'
-        read_only_fields = ('health_risk_prediction',)
-
+        read_only_fields = ('health_risk_prediction', 'disease_prediction', 'prediction_confidence')
+        
+        
 class BloodTestUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = BloodTest

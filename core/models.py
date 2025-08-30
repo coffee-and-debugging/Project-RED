@@ -154,12 +154,15 @@ class BloodTest(models.Model):
     platelet_count = models.FloatField(blank=True, null=True)  # Make optional
     tested_by = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='blood_tests')
     health_risk_prediction = models.TextField(blank=True, null=True)
+    disease_prediction = models.TextField(blank=True, null=True)  # Add this field
+    prediction_confidence = models.FloatField(blank=True, null=True)  # Add confidence score
     life_saved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)  # Add update tracking
     
     def __str__(self):
         return f"Blood test for {self.donation.donor.username}"
-
+    
 class ChatRoom(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     donor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='donor_chats')

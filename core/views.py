@@ -10,13 +10,13 @@ from django.middleware.csrf import get_token
 from django.db.models import Q
 import traceback
 from django.utils import timezone
-from .models import User, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification, HospitalUser
+from .models import User, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification, HospitalUser, DonorHospitalAssignment
 from .serializers import (
     UserRegistrationSerializer, UserLoginSerializer, UserSerializer, 
     HospitalSerializer, BloodRequestSerializer, DonationSerializer, 
     BloodTestSerializer, BloodTestUpdateSerializer, ChatRoomSerializer, 
     MessageSerializer, NotificationSerializer, HospitalRegistrationSerializer,
-    HospitalLoginSerializer, HospitalUserSerializer
+    HospitalLoginSerializer, HospitalUserSerializer, DonorHospitalAssignmentSerializer
 )
 import requests
 from django.conf import settings
@@ -29,8 +29,10 @@ from rest_framework import authentication
 from rest_framework_simplejwt.exceptions import InvalidToken
 from .authentication import HospitalUserAuthentication
 from .permissions import IsHospitalUserAuthenticated
+from .utils.ai_prediction import HealthPredictor
+import logging
 
-
+logger = logging.getLogger(__name__)
 
 def get_hospital_user_tokens(hospital_user):
     refresh = RefreshToken()
@@ -340,18 +342,6 @@ class BloodRequestViewSet(viewsets.ModelViewSet):
         donors_with_distance.sort(key=lambda x: x['distance'])
         return Response(donors_with_distance)
 
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
-from django.db.models import Q
-from django.conf import settings
-from math import radians, sin, cos, sqrt, atan2
-import requests, json
-
-from .models import Donation, Hospital, ChatRoom, Notification
-from .serializers import DonationSerializer, HospitalSerializer
-
 class DonationViewSet(viewsets.ModelViewSet):
     queryset = Donation.objects.all()
     serializer_class = DonationSerializer
@@ -583,9 +573,7 @@ class DonationViewSet(viewsets.ModelViewSet):
         a = sin(dlat / 2)**2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlng / 2)**2
         c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return R * c
-    
-    
-    
+
 class BloodTestViewSet(viewsets.ModelViewSet):
     queryset = BloodTest.objects.all()
     serializer_class = BloodTestSerializer
@@ -717,7 +705,6 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
             print(f"Notification: {notification.id}, Type: {notification.notification_type}, Message: {notification.message[:50]}...")
         return notifications
     
-    
     @action(detail=False, methods=['post'])
     def mark_all_read(self, request):
         Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
@@ -731,53 +718,20 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         return Response({'message': 'Notification marked as read'})
 
 
-
-# Update the HospitalDashboardViewSet class
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django.utils import timezone
-
-from .models import Donation, Notification
-from .serializers import UserSerializer, BloodTestSerializer, BloodTestUpdateSerializer
-
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from django.utils import timezone
-from .models import Donation, Notification
-from .serializers import UserSerializer, BloodTestSerializer, BloodTestUpdateSerializer
-from .permissions import IsHospitalUserAuthenticated
-import traceback
-
-from django.db.models import Q
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from .models import Donation, BloodTest, Notification
-from .serializers import UserSerializer, BloodTestSerializer, BloodTestUpdateSerializer
-from .authentication import HospitalUserAuthentication
-from .permissions import IsHospitalUserAuthenticated
-from django.utils import timezone
-
-# Update the HospitalDashboardViewSet to filter by current hospital
 class HospitalDashboardViewSet(viewsets.ViewSet):
     permission_classes = [IsHospitalUserAuthenticated]
 
     @property
     def authentication_classes(self):
-        from .authentication import HospitalUserAuthentication
         return [HospitalUserAuthentication]
     
     def list(self, request):
         # Get the hospital from the authenticated hospital user
         hospital = request.user.hospital
         
-        # Get assignments for this hospital
+        # Get ALL assignments for this hospital (both pending and completed)
         assignments = DonorHospitalAssignment.objects.filter(
-            hospital=hospital,
-            status__in=['scheduled', 'pending']
+            hospital=hospital
         ).select_related('donor', 'donation', 'donation__blood_test')
         
         donors_data = []
@@ -803,6 +757,7 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
                 'blood_test': BloodTestSerializer(donation.blood_test).data if blood_test_exists else None,
                 'life_saved': donation.blood_test.life_saved if blood_test_exists else False,
                 'assigned_at': assignment.assigned_at,
+                'completed_at': assignment.completed_at,
                 'ai_recommended': assignment.ai_recommended
             })
         
@@ -810,15 +765,15 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
     
     @action(detail=True, methods=['post'])
     def submit_blood_test(self, request, pk=None):
-        # pk is the assignment_id now
         try:
             assignment = DonorHospitalAssignment.objects.get(id=pk, hospital=request.user.hospital)
             donation = assignment.donation
+            donor = donation.donor
             
             # Create or update blood test
             blood_test, created = BloodTest.objects.get_or_create(
                 donation=donation,
-                defaults={ 
+                defaults={
                     'tested_by': request.user.hospital,
                     **request.data
                 }
@@ -829,14 +784,48 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
                     setattr(blood_test, attr, value)
                 blood_test.save()
             
-            # Update assignment status to completed
-            assignment.status = 'completed'
-            assignment.completed_at = timezone.now()
-            assignment.save()
+            # Generate AI prediction if this is a new test or major values changed
+            if created or self._should_regenerate_prediction(blood_test, request.data):
+                try:
+                    predictor = HealthPredictor()
+                    prediction_data = {
+                        'donor_name': f"{donor.first_name} {donor.last_name}",
+                        'donor_age': donor.age,
+                        'donor_gender': donor.gender,
+                        'sugar_level': blood_test.sugar_level,
+                        'hemoglobin': blood_test.hemoglobin,
+                        'uric_acid_level': blood_test.uric_acid_level,
+                        'wbc_count': blood_test.wbc_count,
+                        'rbc_count': blood_test.rbc_count,
+                        'platelet_count': blood_test.platelet_count
+                    }
+                    
+                    prediction = predictor.predict_health_risks(prediction_data)
+                    if prediction:
+                        blood_test.health_risk_prediction = prediction['full_prediction']
+                        blood_test.disease_prediction = prediction['summary']
+                        blood_test.prediction_confidence = prediction['confidence']
+                        blood_test.save()
+                        
+                        # Send notification to donor
+                        Notification.objects.create(
+                            user=donor,
+                            notification_type='health_alert',
+                            title='Health Assessment Available',
+                            message=f'Your blood test results have been analyzed. {prediction["summary"]}',
+                            related_id=blood_test.id
+                        )
+                except Exception as e:
+                    logger.error(f"Error generating AI prediction: {str(e)}")
+                    # Continue without prediction
             
-            # Also update donation status
-            donation.status = 'completed'
-            donation.save()
+            # DON'T automatically change assignment status to completed
+            # Let the hospital staff manually mark it as completed when they're done
+            
+            # Only update donation status if it's still pending
+            if donation.status == 'pending':
+                donation.status = 'scheduled'
+                donation.save()
             
             return Response(BloodTestSerializer(blood_test).data)
             
@@ -845,26 +834,85 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
     
     @action(detail=True, methods=['put'])
     def update_blood_test(self, request, pk=None):
-        # Similar to submit_blood_test but for updates
         try:
             assignment = DonorHospitalAssignment.objects.get(id=pk, hospital=request.user.hospital)
             donation = assignment.donation
+            donor = donation.donor
             
             if not hasattr(donation, 'blood_test'):
                 return Response({'error': 'Blood test not found'}, status=404)
                 
             blood_test = donation.blood_test
+            life_saved_updated = 'life_saved' in request.data and request.data['life_saved'] != blood_test.life_saved
+            
+            # Update blood test fields
             for attr, value in request.data.items():
                 setattr(blood_test, attr, value)
             blood_test.save()
+            
+            # If life_saved was set to True, send notification
+            if life_saved_updated and blood_test.life_saved:
+                Notification.objects.create(
+                    user=donor,
+                    notification_type='life_saved',
+                    title='🎉 You Saved a Life!',
+                    message='Your blood donation has been used to save a life. Thank you for your heroic contribution!',
+                    related_id=donation.id
+                )
+            
+            # Regenerate prediction if important values changed
+            if self._should_regenerate_prediction(blood_test, request.data):
+                predictor = HealthPredictor()
+                prediction_data = {
+                    'donor_name': f"{donor.first_name} {donor.last_name}",
+                    'donor_age': donor.age,
+                    'donor_gender': donor.gender,
+                    'sugar_level': blood_test.sugar_level,
+                    'hemoglobin': blood_test.hemoglobin,
+                    'uric_acid_level': blood_test.uric_acid_level,
+                    'wbc_count': blood_test.wbc_count,
+                    'rbc_count': blood_test.rbc_count,
+                    'platelet_count': blood_test.platelet_count
+                }
+                
+                prediction = predictor.predict_health_risks(prediction_data)
+                if prediction:
+                    blood_test.health_risk_prediction = prediction['full_prediction']
+                    blood_test.disease_prediction = prediction['summary']
+                    blood_test.prediction_confidence = prediction['confidence']
+                    blood_test.save()
             
             return Response(BloodTestSerializer(blood_test).data)
             
         except DonorHospitalAssignment.DoesNotExist:
             return Response({'error': 'Assignment not found'}, status=404)
 
+    def _should_regenerate_prediction(self, blood_test, new_data):
+        """Check if prediction should be regenerated based on changed values"""
+        important_fields = ['sugar_level', 'hemoglobin', 'uric_acid_level', 'wbc_count', 'rbc_count', 'platelet_count']
+        for field in important_fields:
+            if field in new_data and getattr(blood_test, field) != new_data[field]:
+                return True
+        return False
 
-     
+
+class DonorHospitalAssignmentViewSet(viewsets.ModelViewSet):
+    queryset = DonorHospitalAssignment.objects.all()
+    serializer_class = DonorHospitalAssignmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        # Hospital users can only see assignments for their hospital
+        if hasattr(self.request.user, 'hospital'):
+            return DonorHospitalAssignment.objects.filter(hospital=self.request.user.hospital)
+        # Regular users can only see their own assignments
+        elif hasattr(self.request.user, 'blood_group'):  # Regular user
+            return DonorHospitalAssignment.objects.filter(donor=self.request.user)
+        return DonorHospitalAssignment.objects.none()
+    
+    def perform_create(self, serializer):
+        serializer.save()
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def complete_donation(request, donation_id):
@@ -1013,8 +1061,6 @@ def create_chatroom_for_donation(request, donation_id):
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
-    
-    
 @action(detail=True, methods=['post'])
 def submit_blood_test(self, request, pk=None):
     try:
@@ -1065,7 +1111,6 @@ def submit_blood_test(self, request, pk=None):
         blood_test.save()
         print(f"Health risk prediction added: {health_risk[:50]}...")
         
-        
         # After generating the health risk prediction
         health_risk = self.predict_health_risk(blood_test)
         print(f"Generated health risk: {health_risk}")
@@ -1111,23 +1156,3 @@ def submit_blood_test(self, request, pk=None):
         import traceback
         traceback.print_exc()
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-from .models import DonorHospitalAssignment
-from .serializers import DonorHospitalAssignmentSerializer
-
-class DonorHospitalAssignmentViewSet(viewsets.ModelViewSet):
-    queryset = DonorHospitalAssignment.objects.all()
-    serializer_class = DonorHospitalAssignmentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get_queryset(self):
-        # Hospital users can only see assignments for their hospital
-        if hasattr(self.request.user, 'hospital'):
-            return DonorHospitalAssignment.objects.filter(hospital=self.request.user.hospital)
-        # Regular users can only see their own assignments
-        elif hasattr(self.request.user, 'blood_group'):  # Regular user
-            return DonorHospitalAssignment.objects.filter(donor=self.request.user)
-        return DonorHospitalAssignment.objects.none()
-    
-    def perform_create(self, serializer):
-        serializer.save()

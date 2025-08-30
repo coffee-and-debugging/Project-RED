@@ -45,4 +45,9 @@ urlpatterns = [
     path('api/hospital-dashboard/assignments/<uuid:pk>/update_blood_test/',
          HospitalDashboardViewSet.as_view({'put': 'update_blood_test'}),
          name='hospital-dashboard-update-blood-test'),
+
+    # New endpoint for marking assignment as completed
+    path('api/hospital-dashboard/assignments/<uuid:pk>/mark_completed/',
+         HospitalDashboardViewSet.as_view({'post': 'mark_as_completed'}),
+         name='hospital-dashboard-mark-completed'),
 ]
