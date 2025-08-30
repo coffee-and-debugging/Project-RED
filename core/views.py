@@ -918,19 +918,53 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['post'])
     def mark_as_completed(self, request, pk=None):
         try:
-            assignment = self.get_object()
-            donation = assignment.donation
+            print(f"Marking assignment {pk} as completed")
             
+            # Get the assignment
+            assignment = DonorHospitalAssignment.objects.get(id=pk)
+            print(f"Assignment found: {assignment.id}")
+            
+            # Check if the hospital user has permission for this assignment
+            if assignment.hospital != request.user.hospital:
+                return Response({'error': 'You do not have permission to complete this assignment'}, status=403)
+            
+            donation = assignment.donation
+            print(f"Donation: {donation.id}, Current status: {donation.status}")
+            
+            # Update assignment status to completed
             assignment.status = 'completed'
             assignment.completed_at = timezone.now()
             assignment.save()
+            print(f"Assignment marked as completed")
             
+            # Update donation status - this will automatically set donation_date via save() method
             donation.status = 'completed'
             donation.save()
+            print(f"Donation marked as completed, date: {donation.donation_date}")
             
-            return Response({'status': 'completed'})
+            # Destroy the chatroom
+            try:
+                chat_room = ChatRoom.objects.get(donation=donation)
+                chat_room.is_active = False
+                chat_room.save()
+                print(f"Chatroom {chat_room.id} deactivated")
+            except ChatRoom.DoesNotExist:
+                print(f"No chatroom found for donation {donation.id}")
             
+            return Response({
+                'status': 'completed',
+                'assignment_id': str(assignment.id),
+                'donation_id': str(donation.id),
+                'donation_date': donation.donation_date
+            })
+            
+        except DonorHospitalAssignment.DoesNotExist:
+            print(f"Assignment {pk} not found")
+            return Response({'error': 'Assignment not found'}, status=404)
         except Exception as e:
+            print(f"Error marking as completed: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return Response({'error': str(e)}, status=400)
     
     

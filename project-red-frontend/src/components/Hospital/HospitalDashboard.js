@@ -194,17 +194,17 @@ const HospitalDashboard = () => {
 
   // Mark assignment as completed with new URL structure
   const markAsCompleted = async (assignmentId) => {
-    try {
-      setLoading(true);
-      await hospitalApi.post(`/hospital-dashboard/${assignmentId}/mark_as_completed/`);
-      setSuccess('Assignment marked as completed successfully!');
-      fetchDonors();
-    } catch (error) {
-      setError('Failed to mark as completed: ' + (error.response?.data?.detail || error.message));
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    setLoading(true);
+    await hospitalApi.post(`/hospital-dashboard/${assignmentId}/mark_as_completed/`);
+    setSuccess('Assignment marked as completed successfully!');
+    fetchDonors();
+  } catch (error) {
+    setError('Failed to mark as completed: ' + (error.response?.data?.detail || error.message));
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Show the prediction for a donor
   const showPrediction = (donor) => {
