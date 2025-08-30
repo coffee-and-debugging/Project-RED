@@ -809,17 +809,24 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
                         blood_test.prediction_confidence = prediction['confidence']
                         blood_test.save()
                         
-                        # Send notification to donor
+                        # Send detailed notification to donor
                         Notification.objects.create(
                             user=donor,
                             notification_type='health_alert',
-                            title='Health Assessment Available',
-                            message=f'Your blood test results have been analyzed. {prediction["summary"]}',
+                            title='Detailed Health Analysis Available',
+                            message=prediction['notification_message'],
                             related_id=blood_test.id
                         )
                 except Exception as e:
                     logger.error(f"Error generating AI prediction: {str(e)}")
-                    # Continue without prediction
+                    # Send basic notification if prediction fails
+                    Notification.objects.create(
+                        user=donor,
+                        notification_type='health_alert',
+                        title='Blood Test Results Ready',
+                        message='Your blood test results have been processed. Please check your dashboard for details.',
+                        related_id=blood_test.id
+                    )
             
             # DESTROY CHATROOM when blood test is completed
             try:
@@ -875,7 +882,7 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
                 Notification.objects.create(
                     user=donor,
                     notification_type='life_saved',
-                    title='🎉 You Saved a Life!',
+                    title='You Saved a Life!',
                     message='Your blood donation has been used to save a life. Thank you for your heroic contribution!',
                     related_id=donation.id
                 )
@@ -1211,7 +1218,7 @@ def submit_blood_test(self, request, pk=None):
             Notification.objects.create(
                 user=donation.donor,
                 notification_type='life_saved',
-                title='Life Saved! 🎉',
+                title='Life Saved!',
                 message='Your blood donation has saved a life! Thank you for your heroic contribution.',
                 related_id=donation.id
             )

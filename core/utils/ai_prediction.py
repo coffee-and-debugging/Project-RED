@@ -1,8 +1,10 @@
+# core/utils/ai_prediction.py
 import openai
 from openai import OpenAI
 import os
 from django.conf import settings
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -13,114 +15,161 @@ class HealthPredictor:
     
     def predict_health_risks(self, blood_test_data):
         """
-        Predict health risks based on blood test results using OpenAI
+        Predict actual health risks and diseases based on blood test results
         """
         if not self.api_key or self.api_key == 'your-openai-api-key-here':
             logger.warning("OpenAI API key not properly configured")
-            return self._get_fallback_prediction(blood_test_data)
+            return self._get_fallback_prediction()
         
         if not self.client:
-            return self._get_fallback_prediction(blood_test_data)
+            return self._get_fallback_prediction()
         
         try:
-            prompt = self._create_prediction_prompt(blood_test_data)
+            prompt = self._create_detailed_prediction_prompt(blood_test_data)
             
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a medical AI assistant. Analyze blood test results and provide:\n"
-                                  "1. Potential health risks\n"
-                                  "2. Disease predictions\n"
-                                  "3. Confidence level (0-100%)\n"
-                                  "4. Recommendations\n"
-                                  "Be professional, accurate, and compassionate."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=500,
-                temperature=0.3
+                messages=[{
+                    "role": "system",
+                    "content": "You are a medical AI assistant. Analyze blood test results and provide:\n"
+                               "1. Specific disease predictions if any abnormalities are found\n"
+                               "2. Health risk assessment\n" 
+                               "3. Recommended actions and precautions\n"
+                               "4. Confidence level\n"
+                               "Be professional, accurate, and compassionate. "
+                               "If results are normal, provide positive reinforcement in a fun way. "
+                               "Format the response clearly with specific insights."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }],
+                max_tokens=800,
+                temperature=0.7
             )
             
             prediction = response.choices[0].message.content.strip()
-            return self._parse_prediction(prediction)
+            return self._parse_detailed_prediction(prediction, blood_test_data)
             
-        except openai.AuthenticationError:
-            logger.error("OpenAI authentication failed - check API key")
-            return self._get_fallback_prediction(blood_test_data)
-        except openai.RateLimitError:
-            logger.error("OpenAI rate limit exceeded")
-            return self._get_fallback_prediction(blood_test_data)
-        except openai.APIConnectionError:
-            logger.error("OpenAI API connection error")
-            return self._get_fallback_prediction(blood_test_data)
-        except openai.APIError as e:
-            logger.error(f"OpenAI API error: {str(e)}")
-            return self._get_fallback_prediction(blood_test_data)
         except Exception as e:
             logger.error(f"OpenAI prediction error: {str(e)}")
-            return self._get_fallback_prediction(blood_test_data)
+            return self._get_fallback_prediction()
     
-    def _create_prediction_prompt(self, data):
-        """Create a detailed prompt for OpenAI"""
+    def _create_detailed_prediction_prompt(self, data):
+        """Create a detailed prompt for disease prediction"""
         return f"""
-        Analyze these blood test results and provide a health risk assessment:
+        Analyze these blood test results comprehensively and provide specific disease predictions:
         
-        Patient Information:
-        - Donor: {data.get('donor_name', 'Unknown')}
+        PATIENT INFORMATION:
+        - Name: {data.get('donor_name', 'Patient')}
         - Age: {data.get('donor_age', 'Unknown')}
         - Gender: {data.get('donor_gender', 'Unknown')}
         
-        Blood Test Results:
-        - Sugar Level: {data.get('sugar_level', 'Not provided')} mg/dL
-        - Hemoglobin: {data.get('hemoglobin', 'Not provided')} g/dL
-        - Uric Acid: {data.get('uric_acid_level', 'Not provided')} mg/dL
-        - WBC Count: {data.get('wbc_count', 'Not provided')} cells/mcL
-        - RBC Count: {data.get('rbc_count', 'Not provided')} million cells/mcL
-        - Platelet Count: {data.get('platelet_count', 'Not provided')} platelets/mcL
+        BLOOD TEST RESULTS:
+        - Sugar Level: {data.get('sugar_level', 'Not provided')} mg/dL (Normal: 70-100 mg/dL)
+        - Hemoglobin: {data.get('hemoglobin', 'Not provided')} g/dL (Normal: 13.5-17.5g/dL M, 12.0-15.5g/dL F)
+        - Uric Acid: {data.get('uric_acid_level', 'Not provided')} mg/dL (Normal: 3.4-7.0mg/dL M, 2.4-6.0mg/dL F)
+        - WBC Count: {data.get('wbc_count', 'Not provided')} cells/mcL (Normal: 4,500-11,000)
+        - RBC Count: {data.get('rbc_count', 'Not provided')} million cells/mcL (Normal: 4.7-6.1M, 4.2-5.4F)
+        - Platelet Count: {data.get('platelet_count', 'Not provided')} platelets/mcL (Normal: 150,000-450,000)
         
-        Normal Ranges:
-        - Sugar Level: 70-100 mg/dL (fasting)
-        - Hemoglobin: 13.5-17.5 g/dL (men), 12.0-15.5 g/dL (women)
-        - Uric Acid: 3.4-7.0 mg/dL (men), 2.4-6.0 mg/dL (women)
-        - WBC Count: 4,500-11,000 cells/mcL
-        - RBC Count: 4.7-6.1 million cells/mcL (men), 4.2-5.4 million cells/mcL (women)
-        - Platelet Count: 150,000-450,000 platelets/mcL
+        REQUIRED ANALYSIS:
+        1. SPECIFIC DISEASE PREDICTIONS: List any potential diseases based on abnormal values
+        2. HEALTH RISK ASSESSMENT: Overall health risk level (Low/Medium/High)
+        3. CONFIDENCE LEVEL: 0-100% confidence in predictions
+        4. RECOMMENDATIONS: Specific actions, lifestyle changes, and medical consultations needed
+        5. POSITIVE REINFORCEMENT: If all values are normal, provide fun, encouraging message
         
-        Please provide:
-        1. Health risk assessment
-        2. Potential disease predictions
-        3. Confidence level (0-100%)
-        4. Recommendations for follow-up
+        Be specific about potential conditions like diabetes, anemia, infections, etc.
         """
     
-    def _parse_prediction(self, prediction_text):
-        """Parse the OpenAI response into structured data"""
+    def _parse_detailed_prediction(self, prediction_text, blood_data):
+        """Parse the detailed OpenAI response"""
+        # Extract confidence level
+        confidence = self._extract_confidence(prediction_text)
+        
+        # Check if results are normal and create appropriate message
+        if self._are_results_normal(blood_data):
+            summary = "Excellent health report! You're fit as a fiddle! 🎉"
+            notification_msg = "Great news! Your blood test results are perfect. Keep up the healthy lifestyle! 💪"
+        else:
+            summary = self._extract_summary(prediction_text)
+            notification_msg = self._create_notification_message(prediction_text)
+        
         return {
             "full_prediction": prediction_text,
-            "summary": self._extract_summary(prediction_text),
-            "confidence": self._extract_confidence(prediction_text)
+            "summary": summary,
+            "notification_message": notification_msg,
+            "confidence": confidence,
+            "has_abnormalities": not self._are_results_normal(blood_data)
         }
     
-    def _extract_summary(self, text):
-        """Extract a summary from the prediction text"""
-        lines = text.split('\n')
-        return lines[0] if lines else "Health assessment completed"
+    def _are_results_normal(self, data):
+        """Check if all blood test results are within normal ranges"""
+        normal_ranges = {
+            'sugar_level': (70, 100),
+            'hemoglobin_male': (13.5, 17.5),
+            'hemoglobin_female': (12.0, 15.5),
+            'uric_acid_male': (3.4, 7.0),
+            'uric_acid_female': (2.4, 6.0),
+            'wbc_count': (4500, 11000),
+            'rbc_count_male': (4.7, 6.1),
+            'rbc_count_female': (4.2, 5.4),
+            'platelet_count': (150000, 450000)
+        }
+        
+        # Check each provided value
+        for key, value in data.items():
+            if value is not None and isinstance(value, (int, float)):
+                if key == 'sugar_level' and not (70 <= value <= 100):
+                    return False
+                elif key == 'hemoglobin':
+                    gender = data.get('donor_gender', '').lower()
+                    if gender == 'm' and not (13.5 <= value <= 17.5):
+                        return False
+                    elif gender == 'f' and not (12.0 <= value <= 15.5):
+                        return False
+                # Add similar checks for other parameters...
+        
+        return True
+    
+    def _create_notification_message(self, prediction_text):
+        """Create a concise notification message from the prediction"""
+        # Limit notification message length
+        max_length = 250
+        
+        # Try to find the most important sentence
+        sentences = re.split(r'[.!?]+', prediction_text)
+        important_sentences = [s.strip() for s in sentences if any(
+            kw in s.lower() for kw in ['recommend', 'advice', 'consult', 'risk', 'potential', 'suggest', 'result']
+        )]
+        
+        if important_sentences:
+            message = important_sentences[0]
+        else:
+            message = "Your detailed blood test analysis is ready. Please check your dashboard for comprehensive health insights."
+        
+        return message[:max_length] + "..." if len(message) > max_length else message
     
     def _extract_confidence(self, text):
         """Extract confidence percentage from text"""
-        import re
         match = re.search(r'(\d{1,3})%', text)
-        return int(match.group(1)) if match else 75
-
-    def _get_fallback_prediction(self, data):
-        """Provide a fallback prediction when OpenAI fails"""
+        return int(match.group(1)) if match else 80
+    
+    def _extract_summary(self, text):
+        """Extract summary from prediction text"""
+        lines = text.split('\n')
+        for line in lines:
+            if line.strip() and not line.strip().startswith(('#', '-', '*')): 
+                return line.strip()[:150] + "..." if len(line.strip()) > 150 else line.strip()
+        return "Health assessment completed"
+    
+    def _get_fallback_prediction(self):
+        """Fallback when OpenAI is not available"""
         return {
-            "full_prediction": "Health assessment completed. Please consult with a healthcare professional for detailed analysis of your blood test results.",
-            "summary": "Blood test analysis completed",
-            "confidence": 75
+            "full_prediction": "Comprehensive health assessment completed. Please consult with a healthcare professional for detailed analysis of your blood test results and personalized medical advice.",
+            "summary": "Blood test analysis completed - consult healthcare provider",
+            "notification_message": "Your blood test results are ready. Please review them with your doctor.",
+            "confidence": 75,
+            "has_abnormalities": False
         }

@@ -221,7 +221,14 @@ const Notifications = () => {
               color={getNotificationColor(selectedNotification?.notification_type)}
               sx={{ mb: 2 }}
             />
-            <Typography variant="body1" paragraph>
+            <Typography variant="body1" paragraph sx={{ 
+              whiteSpace: 'pre-wrap',
+              maxHeight: '300px',
+              overflowY: 'auto',
+              padding: 1,
+              backgroundColor: '#f5f5f5',
+              borderRadius: 1
+            }}>
               {selectedNotification?.message}
             </Typography>
             <Typography variant="caption" color="textSecondary">
