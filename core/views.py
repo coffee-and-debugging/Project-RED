@@ -894,6 +894,26 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
             if field in new_data and getattr(blood_test, field) != new_data[field]:
                 return True
         return False
+    
+    @action(detail=True, methods=['post'])
+    def mark_as_completed(self, request, pk=None):
+        try:
+            assignment = DonorHospitalAssignment.objects.get(id=pk, hospital=request.user.hospital)
+            donation = assignment.donation
+            
+            # Update assignment status to completed
+            assignment.status = 'completed'
+            assignment.completed_at = timezone.now()
+            assignment.save()
+            
+            # Also update donation status
+            donation.status = 'completed'
+            donation.save()
+            
+            return Response({'status': 'completed'})
+            
+        except DonorHospitalAssignment.DoesNotExist:
+            return Response({'error': 'Assignment not found'}, status=404)
 
 
 class DonorHospitalAssignmentViewSet(viewsets.ModelViewSet):

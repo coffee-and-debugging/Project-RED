@@ -146,6 +146,12 @@ const Navbar = () => {
             <Button color="inherit" onClick={() => navigate('/register')}>
               Register
             </Button>
+            <Button color="inherit" onClick={() => navigate('/hospital-login')}>
+              Hospital Login
+            </Button>
+            <Button color="inherit" onClick={() => navigate('/hospital-register')}>
+              Hospital Register
+            </Button>
           </Box>
         )}
       </Toolbar>

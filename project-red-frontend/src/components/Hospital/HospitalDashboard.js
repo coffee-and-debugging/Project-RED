@@ -94,6 +94,7 @@ const HospitalDashboard = () => {
     setHospitalInfo(hospitalUser?.hospital);
   };
 
+  // Fetch donors with new URL structure
   const fetchDonors = async () => {
     try {
       const response = await hospitalApi.get('/hospital-dashboard/donors/');
@@ -145,13 +146,14 @@ const HospitalDashboard = () => {
     setEditTestDialog(true);
   };
 
+  // Submit blood test with new URL structure
   const handleBloodTestSubmit = async () => {
     try {
       setLoading(true);
       setError('');
 
       const response = await hospitalApi.post(
-        `/hospital-dashboard/assignments/${selectedDonor.assignment_id}/submit_blood_test/`,
+        `/hospital-dashboard/${selectedDonor.assignment_id}/submit_blood_test/`,
         bloodTestData
       );
 
@@ -167,13 +169,14 @@ const HospitalDashboard = () => {
     }
   };
 
+  // Update blood test with new URL structure
   const handleBloodTestUpdate = async () => {
     try {
       setLoading(true);
       setError('');
 
       const response = await hospitalApi.put(
-        `/hospital-dashboard/assignments/${selectedDonor.assignment_id}/update_blood_test/`,
+        `/hospital-dashboard/${selectedDonor.assignment_id}/update_blood_test/`,
         bloodTestData
       );
 
@@ -189,15 +192,11 @@ const HospitalDashboard = () => {
     }
   };
 
-  const handleTabChange = (event, newValue) => {
-    setTabValue(newValue);
-  };
-
-  // Mark assignment as completed
+  // Mark assignment as completed with new URL structure
   const markAsCompleted = async (assignmentId) => {
     try {
       setLoading(true);
-      await hospitalApi.post(`/hospital-dashboard/assignments/${assignmentId}/mark_completed/`);
+      await hospitalApi.post(`/hospital-dashboard/${assignmentId}/mark_as_completed/`);
       setSuccess('Assignment marked as completed successfully!');
       fetchDonors();
     } catch (error) {
@@ -237,7 +236,7 @@ const HospitalDashboard = () => {
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
       <Paper sx={{ mb: 3 }}>
-        <Tabs value={tabValue} onChange={handleTabChange} centered>
+        <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)} centered>
           <Tab label="Pending Blood Tests" />
           <Tab label="Completed Blood Tests" />
         </Tabs>
