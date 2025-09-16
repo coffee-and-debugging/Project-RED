@@ -179,12 +179,14 @@ class BloodTestSerializer(serializers.ModelSerializer):
     donor_name = serializers.CharField(source='donation.donor.get_full_name', read_only=True)
     donor_age = serializers.IntegerField(source='donation.donor.age', read_only=True)
     donor_gender = serializers.CharField(source='donation.donor.gender', read_only=True)
+    donor_blood_group = serializers.CharField(source='donation.donor.blood_group', read_only=True)
     hospital_name = serializers.CharField(source='tested_by.name', read_only=True)
     
     class Meta:
         model = BloodTest
         fields = '__all__'
-        read_only_fields = ('health_risk_prediction', 'disease_prediction', 'prediction_confidence')
+        # Remove read_only for prediction fields so they can be returned
+        read_only_fields = ('id', 'created_at', 'updated_at')
                
 
 class DonationSerializer(serializers.ModelSerializer):
@@ -193,7 +195,7 @@ class DonationSerializer(serializers.ModelSerializer):
     patient_blood_group = serializers.CharField(source='blood_request.blood_group', read_only=True)
     hospital_name = serializers.CharField(source='hospital.name', read_only=True)
     donation_date = serializers.DateTimeField(format='%Y-%m-%d %H:%M', read_only=True)
-    blood_test = BloodTestSerializer(read_only=True)  # Add this line
+    blood_test = BloodTestSerializer(read_only=True)  # Include full blood test data
     
     class Meta:
         model = Donation
