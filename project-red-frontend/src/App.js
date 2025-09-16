@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
-
+import HospitalResetPassword from './components/Hospital/HospitalResetPassword';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Navbar from './components/Layout/Navbar';
 import Login from './components/Auth/Login';
@@ -18,6 +18,7 @@ import ChatRoomsList from './components/Common/ChatRoomsList';
 import HospitalRegister from './components/Hospital/HospitalRegister';
 import HospitalLogin from './components/Hospital/HospitalLogin';
 import HospitalDashboard from './components/Hospital/HospitalDashboard';
+import ResetPassword from './components/Auth/ResetPassword';
 
 const theme = createTheme({
   palette: {
@@ -126,6 +127,8 @@ function App() {
                 } 
               />
               <Route path="/" element={<Navigate to="/dashboard" />} />
+              <Route path="/reset-password/:uid/:token" element={<ResetPassword />} />
+              <Route path="/hospital-reset-password/:uid/:token" element={<HospitalResetPassword />} />
             </Routes>
           </div>
         </Router>

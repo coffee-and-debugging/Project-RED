@@ -10,6 +10,7 @@ import {
   Alert
 } from '@mui/material';
 import { donationService } from '../../services/donations';
+import HealthAnalysis from '../Common/HealthAnalysis'; // Import the HealthAnalysis component
 
 const DonationHistory = () => {
   const [donations, setDonations] = useState([]);
@@ -101,6 +102,12 @@ const DonationHistory = () => {
                         <Typography variant="body2" color="error">
                           <strong>Life Saved:</strong> Yes 🎉
                         </Typography>
+                      )}
+                      {/* Add the HealthAnalysis component to the donation history item */}
+                      {donation.blood_test && (
+                        <Box sx={{ mt: 2 }}>
+                          <HealthAnalysis bloodTest={donation.blood_test} />
+                        </Box>
                       )}
                     </Box>
                   }

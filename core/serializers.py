@@ -88,11 +88,12 @@ class HospitalRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     confirm_password = serializers.CharField(write_only=True, min_length=8)
     username = serializers.CharField(required=False, max_length=150)
+    email = serializers.EmailField(required=True)
     
     class Meta:
         model = Hospital
         fields = ('name', 'address', 'phone_number', 'location_lat', 'location_long', 
-                 'username', 'password', 'confirm_password')
+                 'username', 'email', 'password', 'confirm_password')
     
     def validate(self, data):
         if data['password'] != data['confirm_password']:
@@ -107,8 +108,13 @@ class HospitalRegistrationSerializer(serializers.ModelSerializer):
             username = username[:30]
             data['username'] = username
         
+        # Check if username already exists
         if HospitalUser.objects.filter(username=data['username']).exists():
             raise serializers.ValidationError({"username": ["This username is already taken"]})
+        
+        # Check if email already exists
+        if HospitalUser.objects.filter(email=data['email']).exists():
+            raise serializers.ValidationError({"email": ["This email is already registered"]})
         
         return data
     
@@ -116,17 +122,20 @@ class HospitalRegistrationSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password')
         validated_data.pop('confirm_password')
         username = validated_data.pop('username')
+        email = validated_data.pop('email')  # Extract email
         
         hospital = Hospital.objects.create(**validated_data)
         
         hospital_user = HospitalUser.objects.create(
             hospital=hospital,
-            username=username
+            username=username,
+            email=email  # Set email
         )
         hospital_user.set_password(password)
         
         return hospital
-
+    
+    
 class HospitalLoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(write_only=True)
@@ -164,18 +173,7 @@ class BloodRequestSerializer(serializers.ModelSerializer):
         model = BloodRequest
         fields = '__all__'
         read_only_fields = ('patient', 'status')
-
-class DonationSerializer(serializers.ModelSerializer):
-    donor_name = serializers.CharField(source='donor.get_full_name', read_only=True)
-    patient_name = serializers.CharField(source='blood_request.patient.get_full_name', read_only=True)
-    patient_blood_group = serializers.CharField(source='blood_request.blood_group', read_only=True)
-    hospital_name = serializers.CharField(source='hospital.name', read_only=True)
-    donation_date = serializers.DateTimeField(format='%Y-%m-%d %H:%M', read_only=True)
-    
-    class Meta:
-        model = Donation
-        fields = '__all__'
-        read_only_fields = ('donor', 'hospital', 'status')
+        
 
 class BloodTestSerializer(serializers.ModelSerializer):
     donor_name = serializers.CharField(source='donation.donor.get_full_name', read_only=True)
@@ -187,7 +185,21 @@ class BloodTestSerializer(serializers.ModelSerializer):
         model = BloodTest
         fields = '__all__'
         read_only_fields = ('health_risk_prediction', 'disease_prediction', 'prediction_confidence')
-        
+               
+
+class DonationSerializer(serializers.ModelSerializer):
+    donor_name = serializers.CharField(source='donor.get_full_name', read_only=True)
+    patient_name = serializers.CharField(source='blood_request.patient.get_full_name', read_only=True)
+    patient_blood_group = serializers.CharField(source='blood_request.blood_group', read_only=True)
+    hospital_name = serializers.CharField(source='hospital.name', read_only=True)
+    donation_date = serializers.DateTimeField(format='%Y-%m-%d %H:%M', read_only=True)
+    blood_test = BloodTestSerializer(read_only=True)  # Add this line
+    
+    class Meta:
+        model = Donation
+        fields = '__all__'
+        read_only_fields = ('donor', 'hospital', 'status')
+
         
 class BloodTestUpdateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -227,3 +239,47 @@ class DonorHospitalAssignmentSerializer(serializers.ModelSerializer):
         model = DonorHospitalAssignment
         fields = '__all__'
         read_only_fields = ('assigned_at', 'completed_at')
+        
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    
+    def validate_email(self, value):
+        """
+        Validate that the email exists in the system
+        """
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("No account found with this email address")
+        return value
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({"password": ["Passwords don't match"]})
+        return data
+    
+    
+class HospitalPasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    
+    def validate_email(self, value):
+        """
+        Validate that the email exists in the hospital user system
+        """
+        if not HospitalUser.objects.filter(email=value).exists():
+            raise serializers.ValidationError("No hospital account found with this email address")
+        return value
+
+class HospitalPasswordResetConfirmSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({"password": ["Passwords don't match"]})
+        return data
