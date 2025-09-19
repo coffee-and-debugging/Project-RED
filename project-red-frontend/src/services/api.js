@@ -24,13 +24,19 @@ api.interceptors.request.use(
 hospitalApi.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('hospital_access_token');
-    if (token) {
+    // avoid sending token for login/refresh endpoints
+    if (
+      token &&
+      !config.url.includes('/hospital-auth/login/') &&
+      !config.url.includes('/token/refresh/')
+    ) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
   (error) => Promise.reject(error)
 );
+
 
 api.interceptors.response.use(
   (response) => response,
