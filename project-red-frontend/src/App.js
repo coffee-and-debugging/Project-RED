@@ -2,6 +2,8 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import Profile from './components/Common/Profile';
+
 
 import HospitalResetPassword from './components/Hospital/HospitalResetPassword';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -115,6 +117,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <ChatRoom />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/profile" 
+                element={
+                  <ProtectedRoute>
+                    <Profile />
                   </ProtectedRoute>
                 } 
               />

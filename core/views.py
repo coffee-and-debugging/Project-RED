@@ -25,7 +25,8 @@ from .serializers import (
     MessageSerializer, NotificationSerializer, HospitalRegistrationSerializer,
     HospitalLoginSerializer, HospitalUserSerializer, DonorHospitalAssignmentSerializer,
     PasswordResetConfirmSerializer, PasswordResetRequestSerializer,
-    HospitalPasswordResetConfirmSerializer, HospitalPasswordResetRequestSerializer
+    HospitalPasswordResetConfirmSerializer, HospitalPasswordResetRequestSerializer,
+    UserUpdateSerializer
 )
 import requests
 from django.conf import settings
@@ -229,62 +230,130 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
-    
+
     def get_queryset(self):
         if self.request.user.is_staff:
             return User.objects.all()
         return User.objects.filter(id=self.request.user.id)
     
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', True)
         instance = self.get_object()
-        
+
         if instance != request.user and not request.user.is_staff:
-            return Response({'error': 'You can only update your own profile'}, 
-                           status=status.HTTP_403_FORBIDDEN)
-        
+            return Response(
+                {'error': 'You can only update your own profile'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
-    
+
+    @action(detail=True, methods=['put', 'patch'])
+    def update_profile(self, request, pk=None):
+        user = self.get_object()
+        if user != request.user:
+            return Response(
+                {"error": "You can only update your own profile."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = UserUpdateSerializer(
+            user,
+            data=request.data,
+            partial=True,
+            context={'request': request}  # Pass request in context for profile_picture URL
+        )
+        if serializer.is_valid():
+            serializer.save()
+
+            # Return updated user data including profile_picture_url
+            user_serializer = UserSerializer(user, context={'request': request})
+            return Response(user_serializer.data)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def change_password(self, request, pk=None):
+        user = self.get_object()
+        if user != request.user:
+            return Response(
+                {"error": "You can only change your own password."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = ChangePasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            if not user.check_password(serializer.validated_data['old_password']):
+                return Response(
+                    {"old_password": "Wrong password."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            user.set_password(serializer.validated_data['new_password'])
+            user.save()
+            return Response({"message": "Password updated successfully."})
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def profile(self, request):
+        # Return serialized user data including profile_picture_url
+        serializer = UserSerializer(request.user, context={'request': request})
+        return Response(serializer.data)
+
     @action(detail=False, methods=['get'])
     def nearby_donors(self, request):
         user_lat = request.query_params.get('lat')
         user_lng = request.query_params.get('lng')
         blood_group = request.query_params.get('blood_group')
         max_distance = request.query_params.get('max_distance', 50)
-        
+
         if not user_lat or not user_lng:
-            return Response({'error': 'Latitude and longitude parameters are required'}, 
-                        status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {'error': 'Latitude and longitude parameters are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         try:
             user_lat = float(user_lat)
             user_lng = float(user_lng)
             max_distance = float(max_distance)
         except ValueError:
-            return Response({'error': 'Invalid coordinate values'}, 
-                        status=status.HTTP_400_BAD_REQUEST)
-        
-        donors = User.objects.filter(is_donor=True, location_lat__isnull=False, location_long__isnull=False)
+            return Response(
+                {'error': 'Invalid coordinate values'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        donors = User.objects.filter(
+            is_donor=True,
+            location_lat__isnull=False,
+            location_long__isnull=False
+        )
         if blood_group:
             donors = donors.filter(blood_group=blood_group)
-        
+
         donors = donors.exclude(id=request.user.id)
-        
+
         nearby_donors = []
         for donor in donors:
             distance = self.calculate_distance(
                 user_lat, user_lng, donor.location_lat, donor.location_long
             )
             if distance <= max_distance:
-                donor_data = UserSerializer(donor).data
+                donor_data = UserSerializer(donor, context={'request': request}).data
                 donor_data['distance'] = round(distance, 2)
                 nearby_donors.append(donor_data)
-        
+
         return Response(nearby_donors)
-    
+
     def calculate_distance(self, lat1, lng1, lat2, lng2):
         R = 6371
         lat1_rad = radians(lat1)
@@ -293,8 +362,8 @@ class UserViewSet(viewsets.ModelViewSet):
         lng2_rad = radians(lng2)
         dlat = lat2_rad - lat1_rad
         dlng = lng2_rad - lng1_rad
-        a = sin(dlat/2)**2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlng/2)**2
-        c = 2 * atan2(sqrt(a), sqrt(1-a))
+        a = sin(dlat / 2) ** 2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlng / 2) ** 2
+        c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return R * c
 
 class HospitalViewSet(viewsets.ModelViewSet):
@@ -444,7 +513,7 @@ class DonationViewSet(viewsets.ModelViewSet):
     )
     serializer_class = DonationSerializer
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get_queryset(self):
         if self.request.user.is_authenticated:
             return Donation.objects.filter(donor=self.request.user).select_related(
@@ -468,12 +537,37 @@ class DonationViewSet(viewsets.ModelViewSet):
 
         serializer.save(donor=self.request.user, status='scheduled')
 
+    def perform_update(self, serializer):
+        """Send notification when donation status changes to scheduled"""
+        instance = self.get_object()
+        old_status = instance.status
+        super().perform_update(serializer)
+
+        if old_status != 'scheduled' and serializer.instance.status == 'scheduled':
+            self.send_acceptance_notification(serializer.instance)
+
+    def send_acceptance_notification(self, donation):
+        """Notify patient and optionally send WebSocket notification"""
+        try:
+            Notification.objects.create(
+                user=donation.blood_request.patient,
+                notification_type='donation_accepted',
+                title='Donation Request Accepted! 🎉',
+                message=f'Your blood request for {donation.blood_request.blood_group} has been accepted by {donation.donor.get_full_name() or donation.donor.username}. You can now chat with them to coordinate the donation.',
+                related_id=donation.id
+            )
+            self.send_websocket_notification(donation)
+        except Exception as e:
+            print(f"Error sending acceptance notification: {e}")
+
+    def send_websocket_notification(self, donation):
+        """Placeholder for real-time notification via WebSocket"""
+        print(f"WebSocket notification would be sent for donation: {donation.id}")
+
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
         try:
             donation = self.get_object()
-
-            print(f"Accepting donation {donation.id} from donor {donation.donor.username}")
 
             if donation.donor != request.user:
                 return Response({'error': 'You can only accept your own donations'},
@@ -494,8 +588,6 @@ class DonationViewSet(viewsets.ModelViewSet):
             donation.donor.location_lng = float(donor_lng)
             donation.donor.save()
 
-            print(f"Donor location updated: {donor_lat}, {donor_lng}")
-
             best_hospital = self.find_best_hospital_with_ai(
                 float(donor_lat), float(donor_lng),
                 donation.blood_request.location_lat, donation.blood_request.location_long
@@ -507,16 +599,11 @@ class DonationViewSet(viewsets.ModelViewSet):
                     donation.blood_request.location_lat, donation.blood_request.location_long
                 )
 
-            print(f"Best hospital found: {best_hospital.name if best_hospital else 'None'}")
-
             donation.status = 'scheduled'
             if best_hospital:
                 donation.hospital = best_hospital
                 donation.ai_recommended_hospital = True
-                print(f"Assigned hospital: {best_hospital.name}, AI Recommended: {donation.ai_recommended_hospital}")
             donation.save()
-
-            print(f"Donation saved with hospital: {donation.hospital.name if donation.hospital else 'None'}")
 
             chat_room, created = ChatRoom.objects.get_or_create(
                 donor=donation.donor,
@@ -525,14 +612,12 @@ class DonationViewSet(viewsets.ModelViewSet):
                 defaults={'is_active': True}
             )
 
-            print(f"Chat room {'created' if created else 'exists'}: {chat_room.id}")
-
-            # Notify patient that their request has been accepted
+            # Notify users
             Notification.objects.create(
                 user=donation.blood_request.patient,
                 notification_type='donation_accepted',
                 title='Blood Request Accepted',
-                message=f'Your blood request has been accepted by {donation.donor.get_full_name()}. You can now chat with them to coordinate the donation.',
+                message=f'Your blood request has been accepted by {donation.donor.get_full_name()}. You can now chat with them.',
                 related_id=chat_room.id
             )
 
@@ -566,20 +651,20 @@ class DonationViewSet(viewsets.ModelViewSet):
             traceback.print_exc()
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    # -------------------------------
+    # Hospital selection helpers
+    # -------------------------------
     def find_best_hospital(self, donor_lat, donor_lng, patient_lat, patient_lng):
         hospitals = Hospital.objects.all()
         best_hospital = None
         min_total_distance = float('inf')
-
         for hospital in hospitals:
             donor_distance = self.calculate_distance(donor_lat, donor_lng, hospital.location_lat, hospital.location_long)
             patient_distance = self.calculate_distance(patient_lat, patient_lng, hospital.location_lat, hospital.location_long)
             total_distance = donor_distance + patient_distance
-
             if total_distance < min_total_distance:
                 min_total_distance = total_distance
                 best_hospital = hospital
-
         return best_hospital
 
     def find_best_hospital_with_ai(self, donor_lat, donor_lng, patient_lat, patient_lng):
@@ -592,7 +677,6 @@ class DonationViewSet(viewsets.ModelViewSet):
             for hospital in hospitals:
                 donor_distance = self.calculate_distance(donor_lat, donor_lng, hospital.location_lat, hospital.location_long)
                 patient_distance = self.calculate_distance(patient_lat, patient_lng, hospital.location_lat, hospital.location_long)
-
                 hospital_data.append({
                     'id': str(hospital.id),
                     'name': hospital.name,
@@ -608,46 +692,19 @@ class DonationViewSet(viewsets.ModelViewSet):
             if not api_key:
                 return Hospital.objects.get(id=hospital_data[0]['id'])
 
-            headers = {
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            }
-
+            headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
             prompt = f"""
-            Analyze these hospitals and select the best one for a blood donation scenario:
+Analyze these hospitals and select the best one for a blood donation scenario:
+Donor: {donor_lat}, {donor_lng}
+Patient: {patient_lat}, {patient_lng}
+Hospitals: {json.dumps(hospital_data, indent=2)}
+Return ONLY the hospital ID of the best choice.
+"""
+            data = {'model': 'gpt-3.5-turbo', 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': 50, 'temperature': 0.1}
 
-            Donor Location: {donor_lat}, {donor_lng}
-            Patient Location: {patient_lat}, {patient_lng}
-
-            Available Hospitals:
-            {json.dumps(hospital_data, indent=2)}
-
-            Consider factors like:
-            1. Total travel distance (donor + patient)
-            2. Balance between donor and patient convenience
-            3. Hospital capacity and facilities
-            4. Traffic conditions (assume current time)
-
-            Return ONLY the hospital ID of the best choice.
-            """
-
-            data = {
-                'model': 'gpt-3.5-turbo',
-                'messages': [{'role': 'user', 'content': prompt}],
-                'max_tokens': 50,
-                'temperature': 0.1
-            }
-
-            response = requests.post(
-                'https://api.openai.com/v1/chat/completions',
-                headers=headers,
-                data=json.dumps(data),
-                timeout=10
-            )
-
+            response = requests.post('https://api.openai.com/v1/chat/completions', headers=headers, data=json.dumps(data), timeout=10)
             if response.status_code == 200:
-                result = response.json()
-                hospital_id = result['choices'][0]['message']['content'].strip()
+                hospital_id = response.json()['choices'][0]['message']['content'].strip()
                 try:
                     return Hospital.objects.get(id=hospital_id)
                 except (Hospital.DoesNotExist, ValueError):
@@ -662,16 +719,14 @@ class DonationViewSet(viewsets.ModelViewSet):
 
     def calculate_distance(self, lat1, lng1, lat2, lng2):
         R = 6371
-        lat1_rad = radians(lat1)
-        lng1_rad = radians(lng1)
-        lat2_rad = radians(lat2)
-        lng2_rad = radians(lng2)
+        lat1_rad, lng1_rad, lat2_rad, lng2_rad = map(radians, [lat1, lng1, lat2, lng2])
         dlat = lat2_rad - lat1_rad
         dlng = lng2_rad - lng1_rad
         a = sin(dlat / 2)**2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlng / 2)**2
         c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return R * c
-
+    
+    
 class BloodTestViewSet(viewsets.ModelViewSet):
     queryset = BloodTest.objects.all()
     serializer_class = BloodTestSerializer
@@ -1302,31 +1357,29 @@ def hospital_coordinates(request):
 @permission_classes([IsAuthenticated])
 def create_chatroom_for_donation(request, donation_id):
     try:
-        donation = get_object_or_404(Donation, id=donation_id)
+        donation = Donation.objects.get(id=donation_id)
         
-        if request.user not in [donation.donor, donation.blood_request.patient]:
-            return Response({'error': 'You are not authorized to create a chat room for this donation'}, 
-                           status=status.HTTP_403_FORBIDDEN)
+        # Check if chat room already exists
+        chat_room = ChatRoom.objects.filter(donation=donation).first()
         
-        if hasattr(donation, 'chat_room'):
-            return Response({'error': 'Chat room already exists for this donation'}, 
-                           status=status.HTTP_400_BAD_REQUEST)
-        
-        chat_room = ChatRoom.objects.create(
-            donor=donation.donor,
-            patient=donation.blood_request.patient,
-            donation=donation,
-            is_active=True
-        )
-        
-        Message.objects.create(
-            chat_room=chat_room,
-            sender=request.user,
-            content=f"Chat room created for blood donation. Donor: {donation.donor.get_full_name()}, Patient: {donation.blood_request.patient.get_full_name()}"
-        )
+        if not chat_room:
+            chat_room = ChatRoom.objects.create(
+                donor=donation.donor,
+                patient=donation.blood_request.patient,
+                donation=donation,
+                is_active=True
+            )
         
         serializer = ChatRoomSerializer(chat_room)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.data)
         
+    except Donation.DoesNotExist:
+        return Response(
+            {"error": "Donation not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
     except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"error": str(e)}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
