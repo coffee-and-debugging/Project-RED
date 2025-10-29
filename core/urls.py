@@ -50,4 +50,13 @@ urlpatterns = [
     path('api/hospital-dashboard/assignments/<uuid:pk>/mark_completed/',
          HospitalDashboardViewSet.as_view({'post': 'mark_as_completed'}),
          name='hospital-dashboard-mark-completed'),
+    
+    path('api/password-reset/request/', AuthViewSet.as_view({'post': 'request_password_reset'}), name='password-reset-request'),
+    path('api/password-reset/confirm/', AuthViewSet.as_view({'post': 'reset_password'}), name='password-reset-confirm'),
+    path('api/hospital-password-reset/request/', HospitalAuthViewSet.as_view({'post': 'request_password_reset'}), name='hospital-password-reset-request'),
+    path('api/hospital-password-reset/confirm/', HospitalAuthViewSet.as_view({'post': 'reset_password'}), name='hospital-password-reset-confirm'),
+    path('api/hospital-dashboard/assignments/<uuid:pk>/generate_prediction/', HospitalDashboardViewSet.as_view({'post': 'generate_prediction'}), name='hospital-dashboard-generate-prediction'),
+    path('api/test-openai/', HospitalDashboardViewSet.as_view({'get': 'test_openai'}), name='test-openai'),
+    
+    
 ]

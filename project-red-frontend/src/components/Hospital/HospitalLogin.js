@@ -6,7 +6,11 @@ import {
   Button,
   Typography,
   Box,
-  Alert
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import { useNavigate, Link } from 'react-router-dom';
 import { hospitalApi } from '../../services/api';
@@ -18,6 +22,11 @@ const HospitalLogin = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
   
   const navigate = useNavigate();
 
@@ -65,6 +74,32 @@ const HospitalLogin = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!resetEmail) {
+      setResetError('Please enter your email address');
+      return;
+    }
+
+    try {
+      setResetError('');
+      setResetMessage('');
+      setResetLoading(true);
+      await hospitalApi.post('/hospital-password-reset/request/', { email: resetEmail });
+      setResetMessage('Password reset link has been sent to your email');
+      setResetEmail('');
+    } catch (error) {
+      if (error.response?.data?.email) {
+        setResetError(error.response.data.email[0]);
+      } else if (error.response?.data?.error) {
+        setResetError(error.response.data.error);
+      } else {
+        setResetError('Failed to send reset email: ' + (error.response?.data?.detail || error.message));
+      }
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -118,7 +153,7 @@ const HospitalLogin = () => {
               {loading ? 'Signing In...' : 'Sign In'}
             </Button>
             
-            <Box sx={{ textAlign: 'center' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
               <Button
                 component={Link}
                 to="/hospital-register"
@@ -127,13 +162,21 @@ const HospitalLogin = () => {
               >
                 Don't have an account? Register Hospital
               </Button>
-              <br />
+              <Button
+                variant="text"
+                size="small"
+                onClick={() => setForgotPasswordOpen(true)}
+              >
+                Forgot Password?
+              </Button>
+            </Box>
+            
+            <Box sx={{ textAlign: 'center', mt: 1 }}>
               <Button
                 component={Link}
                 to="/"
                 variant="text"
                 size="small"
-                sx={{ mt: 1 }}
               >
                 ← Back to Main Site
               </Button>
@@ -141,6 +184,37 @@ const HospitalLogin = () => {
           </Box>
         </Paper>
       </Box>
+
+      {/* Forgot Password Dialog */}
+      <Dialog open={forgotPasswordOpen} onClose={() => setForgotPasswordOpen(false)}>
+        <DialogTitle>Reset Hospital Password</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Enter your hospital account email address and we'll send you a link to reset your password.
+          </Typography>
+          {resetMessage && <Alert severity="success" sx={{ mb: 2 }}>{resetMessage}</Alert>}
+          {resetError && <Alert severity="error" sx={{ mb: 2 }}>{resetError}</Alert>}
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Email Address"
+            type="email"
+            fullWidth
+            variant="outlined"
+            value={resetEmail}
+            onChange={(e) => setResetEmail(e.target.value)}
+            disabled={resetLoading}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setForgotPasswordOpen(false)} disabled={resetLoading}>
+            Cancel
+          </Button>
+          <Button onClick={handleForgotPassword} disabled={resetLoading}>
+            {resetLoading ? 'Sending...' : 'Send Reset Link'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

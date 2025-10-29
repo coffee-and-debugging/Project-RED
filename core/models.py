@@ -36,12 +36,13 @@ class User(AbstractUser):
     GENDER_CHOICES = [('M', 'Male'), ('F', 'Female'), ('O', 'Other')]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField(unique=True)
     blood_group = models.CharField(max_length=3, choices=BLOOD_GROUPS, blank=True, null=True)
     allergies = models.TextField(blank=True, null=True)
     age = models.PositiveIntegerField(validators=[MinValueValidator(18), MaxValueValidator(65)], blank=True, null=True)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
+    phone_number = models.CharField(max_length=15, unique=True)
     is_donor = models.BooleanField(default=True)
     is_recipient = models.BooleanField(default=True)
     location_lat = models.FloatField(blank=True, null=True)
@@ -69,13 +70,21 @@ class HospitalUser(models.Model):
     """Hospital authentication model"""
     hospital = models.OneToOneField(Hospital, on_delete=models.CASCADE, related_name='auth_account')
     username = models.CharField(max_length=150, unique=True)
+    email = models.EmailField(unique=True)
     password = models.CharField(max_length=128)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    last_login = models.DateTimeField(null=True, blank=True)
     
     # Add authentication attributes
     is_authenticated = True
     is_anonymous = False
+    
+    def update_last_login(self):
+        """Update the last_login field when user logs in"""
+        from django.utils import timezone
+        self.last_login = timezone.now()
+        self.save()
     
     def set_password(self, raw_password):
         self.password = make_password(raw_password)
@@ -157,23 +166,41 @@ class Donation(models.Model):
 
 class BloodTest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    donation = models.OneToOneField(Donation, on_delete=models.CASCADE, related_name='blood_test')
+    donation = models.OneToOneField('Donation', on_delete=models.CASCADE, related_name='blood_test')
+    
+    # Blood test fields (existing)
     sugar_level = models.FloatField(blank=True, null=True)  # Make optional
     uric_acid_level = models.FloatField(blank=True, null=True)  # Make optional
     wbc_count = models.FloatField(blank=True, null=True)  # Make optional
     rbc_count = models.FloatField(blank=True, null=True)  # Make optional
     hemoglobin = models.FloatField(blank=True, null=True)  # Make optional
     platelet_count = models.FloatField(blank=True, null=True)  # Make optional
-    tested_by = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='blood_tests')
+    
+    # Foreign key to Hospital model
+    tested_by = models.ForeignKey('Hospital', on_delete=models.CASCADE, related_name='blood_tests')
+
+    # Prediction fields (new)
     health_risk_prediction = models.TextField(blank=True, null=True)
     disease_prediction = models.TextField(blank=True, null=True)  # Add this field
     prediction_confidence = models.FloatField(blank=True, null=True)  # Add confidence score
+    
+    # Structured prediction data (new fields)
+    prediction_summary = models.TextField(blank=True, null=True)
+    prediction_findings = models.TextField(blank=True, null=True)
+    prediction_conditions = models.TextField(blank=True, null=True)
+    prediction_recommendations = models.TextField(blank=True, null=True)
+    prediction_disclaimer = models.TextField(blank=True, null=True)
+    
+    # Other fields
     life_saved = models.BooleanField(default=False)
+    
+    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)  # Add update tracking
-    
+
     def __str__(self):
         return f"Blood test for {self.donation.donor.username}"
+    
     
 class ChatRoom(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

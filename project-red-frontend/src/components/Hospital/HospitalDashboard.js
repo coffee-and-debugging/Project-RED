@@ -1,615 +1,394 @@
-import React, { useState, useEffect } from 'react';
-import { LocalHospital as LocalHospitalIcon } from '@mui/icons-material';
+import React, { useState, useEffect } from "react";
 import {
   Container,
   Typography,
   Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Box,
-  Card,
-  CardContent,
   Button,
-  Alert,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  FormControlLabel,
-  Checkbox,
-  Grid,
   Chip,
-  Tabs,
-  Tab
-} from '@mui/material';
-import {
-  LocalHospital as HospitalIcon,
-  CheckCircle as CheckCircleIcon,
-  Edit as EditIcon,
-  Insights as InsightsIcon
-} from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
-import { hospitalApi } from '../../services/api';
-
-function TabPanel({ children, value, index, ...other }) {
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`hospital-tabpanel-${index}`}
-      aria-labelledby={`hospital-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
-    </div>
-  );
-}
+  Alert,
+  Snackbar,
+  Grid,
+} from "@mui/material";
+import { hospitalApi } from "../../services/api";
+import BloodTestForm from "./BloodTestForm";
 
 const HospitalDashboard = () => {
   const [donors, setDonors] = useState([]);
-  const [filteredDonors, setFilteredDonors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [selectedDonor, setSelectedDonor] = useState(null);
-  const [bloodTestDialog, setBloodTestDialog] = useState(false);
-  const [editTestDialog, setEditTestDialog] = useState(false);
-  const [bloodTestData, setBloodTestData] = useState({
-    sugar_level: '',
-    uric_acid_level: '',
-    wbc_count: '',
-    rbc_count: '',
-    hemoglobin: '',
-    platelet_count: '',
-    life_saved: false
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [hospitalInfo, setHospitalInfo] = useState(null);
-  const [tabValue, setTabValue] = useState(0);
-  const [showPredictionDialog, setShowPredictionDialog] = useState(false);
-  const [currentPrediction, setCurrentPrediction] = useState(null);
-
-  const navigate = useNavigate();
+  const [predictionDialogOpen, setPredictionDialogOpen] = useState(false);
+  const [bloodTestFormOpen, setBloodTestFormOpen] = useState(false);
+  const [currentAssignment, setCurrentAssignment] = useState(null);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   useEffect(() => {
-    fetchHospitalData();
     fetchDonors();
   }, []);
 
-  useEffect(() => {
-    // Filter donors based on selected tab
-    if (tabValue === 0) {
-      // Pending tests (no blood test or not completed)
-      setFilteredDonors(donors.filter(donor =>
-        !donor.blood_test_exists || donor.assignment_status !== 'completed'
-      ));
-    } else {
-      // Completed tests (has blood test and assignment completed)
-      setFilteredDonors(donors.filter(donor =>
-        donor.blood_test_exists && donor.assignment_status === 'completed'
-      ));
+  const generatePrediction = async (assignmentId) => {
+    try {
+      await hospitalApi.post(`/hospital-dashboard/assignments/${assignmentId}/generate_prediction/`);
+      setSuccess('AI prediction generated successfully!');
+      fetchDonors(); // Refresh data
+    } catch (error) {
+      setError('Failed to generate prediction: ' + (error.response?.data?.detail || error.message));
     }
-  }, [donors, tabValue]);
-
-  const fetchHospitalData = () => {
-    const hospitalUser = JSON.parse(localStorage.getItem('hospital_user'));
-    setHospitalInfo(hospitalUser?.hospital);
   };
 
-  // Fetch donors with new URL structure
   const fetchDonors = async () => {
     try {
-      const response = await hospitalApi.get('/hospital-dashboard/donors/');
+      setLoading(true);
+      const response = await hospitalApi.get("/hospital-dashboard/donors/");
       setDonors(response.data);
     } catch (error) {
-      console.error('Error fetching donors:', error);
-      if (error.response?.status === 401) {
-        handleLogout();
+      setError("Failed to fetch donor data: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const viewPrediction = (donor) => {
+    setSelectedDonor(donor);
+    setPredictionDialogOpen(true);
+  };
+
+  const openBloodTestForm = (donor, isEdit = false) => {
+    setCurrentAssignment(donor.assignment_id);
+    setSelectedDonor(donor);
+    setIsEditMode(isEdit);
+    setBloodTestFormOpen(true);
+  };
+
+  const handleBloodTestSubmit = async (bloodTestData) => {
+    try {
+      if (isEditMode) {
+        // Update existing blood test
+        await hospitalApi.put(
+          `/hospital-dashboard/assignments/${currentAssignment}/update_blood_test/`,
+          bloodTestData
+        );
+        setSuccess("Blood test results updated successfully!");
       } else {
-        setError('Failed to fetch donors: ' + (error.response?.data?.detail || error.message));
+        // Submit new blood test
+        await hospitalApi.post(
+          `/hospital-dashboard/assignments/${currentAssignment}/submit_blood_test/`,
+          bloodTestData
+        );
+        setSuccess("Blood test results submitted successfully!");
       }
-    }
-  };
 
-  const handleLogout = () => {
-    localStorage.removeItem('hospital_access_token');
-    localStorage.removeItem('hospital_refresh_token');
-    localStorage.removeItem('hospital_user');
-    navigate('/hospital-login');
-  };
-
-  const openBloodTestDialog = (donor) => {
-    setSelectedDonor(donor);
-    setBloodTestData({
-      sugar_level: '',
-      uric_acid_level: '',
-      wbc_count: '',
-      rbc_count: '',
-      hemoglobin: '',
-      platelet_count: '',
-      life_saved: false
-    });
-    setBloodTestDialog(true);
-  };
-
-  const openEditTestDialog = (donor) => {
-    setSelectedDonor(donor);
-    if (donor.blood_test) {
-      setBloodTestData({
-        sugar_level: donor.blood_test.sugar_level || '',
-        uric_acid_level: donor.blood_test.uric_acid_level || '',
-        wbc_count: donor.blood_test.wbc_count || '',
-        rbc_count: donor.blood_test.rbc_count || '',
-        hemoglobin: donor.blood_test.hemoglobin || '',
-        platelet_count: donor.blood_test.platelet_count || '',
-        life_saved: donor.blood_test.life_saved || false
-      });
-    }
-    setEditTestDialog(true);
-  };
-
-  // Submit blood test with new URL structure
-  const handleBloodTestSubmit = async () => {
-    try {
-      setLoading(true);
-      setError('');
-
-      const response = await hospitalApi.post(
-        `/hospital-dashboard/${selectedDonor.assignment_id}/submit_blood_test/`,
-        bloodTestData
-      );
-
-      setSuccess('Blood test submitted successfully!');
-      setBloodTestDialog(false);
-      fetchDonors();
-
+      setBloodTestFormOpen(false);
+      fetchDonors(); // Refresh data
     } catch (error) {
-      setError('Failed to submit blood test: ' + 
-        (error.response?.data?.detail || error.response?.data?.error || error.message));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Update blood test with new URL structure
-  const handleBloodTestUpdate = async () => {
-    try {
-      setLoading(true);
-      setError('');
-
-      const response = await hospitalApi.put(
-        `/hospital-dashboard/${selectedDonor.assignment_id}/update_blood_test/`,
-        bloodTestData
+      setError(
+        "Failed to submit blood test: " +
+          (error.response?.data?.detail || error.message)
       );
-
-      setSuccess('Blood test updated successfully!');
-      setEditTestDialog(false);
-      fetchDonors();
-
-    } catch (error) {
-      setError('Failed to update blood test: ' + 
-        (error.response?.data?.detail || error.response?.data?.error || error.message));
-    } finally {
-      setLoading(false);
     }
   };
 
-  // Mark assignment as completed with new URL structure
   const markAsCompleted = async (assignmentId) => {
-  try {
-    setLoading(true);
-    await hospitalApi.post(`/hospital-dashboard/${assignmentId}/mark_as_completed/`);
-    setSuccess('Assignment marked as completed successfully!');
-    fetchDonors();
-  } catch (error) {
-    setError('Failed to mark as completed: ' + (error.response?.data?.detail || error.message));
-  } finally {
-    setLoading(false);
-  }
-};
-
-  // Show the prediction for a donor
-  const showPrediction = (donor) => {
-    if (donor.blood_test && donor.blood_test.disease_prediction) {
-      setCurrentPrediction(donor.blood_test);
-      setShowPredictionDialog(true);
+    try {
+      await hospitalApi.post(
+        `/hospital-dashboard/assignments/${assignmentId}/mark_completed/`
+      );
+      setSuccess("Donation marked as completed successfully!");
+      fetchDonors(); // Refresh data
+    } catch (error) {
+      setError(
+        "Failed to mark as completed: " +
+          (error.response?.data?.detail || error.message)
+      );
     }
   };
+
+  const handleCloseSnackbar = () => {
+    setError("");
+    setSuccess("");
+  };
+
+  if (loading) return <Typography>Loading...</Typography>;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box>
-          <Typography variant="h4" component="h1" gutterBottom>
-            🏥 Hospital Dashboard
-          </Typography>
-          {hospitalInfo && (
-            <Typography variant="h6" color="primary">
-              {hospitalInfo.name}
-            </Typography>
-          )}
-        </Box>
-        <Button variant="outlined" onClick={handleLogout} color="error">
-          Logout
-        </Button>
-      </Box>
+      <Typography variant="h4" component="h1" gutterBottom>
+        Hospital Dashboard
+      </Typography>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
-
-      <Paper sx={{ mb: 3 }}>
-        <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)} centered>
-          <Tab label="Pending Blood Tests" />
-          <Tab label="Completed Blood Tests" />
-        </Tabs>
-      </Paper>
-
-      <TabPanel value={tabValue} index={0}>
-        <Typography variant="h5" gutterBottom>
-          Donors Needing Blood Tests
-        </Typography>
-
-        {filteredDonors.length === 0 ? (
-          <Paper sx={{ p: 3, textAlign: 'center' }}>
-            <Typography>No donors currently needing blood tests.</Typography>
-            <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-              Donors will appear here when they are scheduled for blood tests at your hospital.
-            </Typography>
-          </Paper>
-        ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {filteredDonors.map((donor) => (
-              <Card key={donor.id} variant="outlined">
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                    <Box>
-                      <Typography variant="h6">
-                        {donor.first_name} {donor.last_name}
-                      </Typography>
-                      <Typography color="textSecondary">
-                        Blood Type: {donor.blood_group} • Age: {donor.age} • {donor.gender}
-                      </Typography>
-                      <Typography variant="body2" sx={{ mt: 1 }}>
-                        <strong>Phone:</strong> {donor.phone_number}
-                      </Typography>
-                      <Typography variant="body2">
-                        <strong>Address:</strong> {donor.address}
-                      </Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                        <Chip 
-                          label={`Donation: ${donor.donation_status}`} 
-                          color={donor.donation_status === 'completed' ? 'success' : 'info'} 
-                          size="small" 
-                        />
-                        <Chip 
-                          label={`Assignment: ${donor.assignment_status}`} 
-                          color={donor.assignment_status === 'completed' ? 'success' : 'warning'} 
-                          size="small" 
-                        />
-                      </Box>
-                    </Box>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      <Button
-                        variant="contained"
-                        onClick={() => openBloodTestDialog(donor)}
-                        startIcon={<HospitalIcon />}
-                        sx={{ backgroundColor: '#d32f2f' }}
-                      >
-                        Submit Blood Test
-                      </Button>
-                      <Button
-                        variant="outlined"
-                        onClick={() => showPrediction(donor)}
-                        startIcon={<InsightsIcon />}
-                        disabled={!donor.blood_test_exists || !donor.blood_test?.disease_prediction}
-                        sx={{ mr: 1 }}
-                      >
-                        View Prediction
-                      </Button>
-                      {donor.assignment_status !== 'completed' && (
+      {donors.length === 0 ? (
+        <Paper sx={{ p: 3, textAlign: "center" }}>
+          <Typography>No donors assigned yet.</Typography>
+        </Paper>
+      ) : (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Donor Name</TableCell>
+                <TableCell>Blood Group</TableCell>
+                <TableCell>Age/Gender</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Blood Test</TableCell>
+                <TableCell>Life Saved</TableCell>
+                <TableCell>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {donors.map((donor) => (
+                <TableRow key={donor.assignment_id}>
+                  <TableCell>
+                    {donor.first_name} {donor.last_name}
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={donor.blood_group}
+                      color="primary"
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    {donor.age}/{donor.gender}
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={donor.assignment_status}
+                      color={
+                        donor.assignment_status === "completed"
+                          ? "success"
+                          : donor.assignment_status === "scheduled"
+                          ? "info"
+                          : "warning"
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    {donor.blood_test_exists ? (
+                      <Chip label="Completed" color="success" />
+                    ) : (
+                      <Chip label="Pending" color="warning" />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {donor.life_saved ? (
+                      <Chip label="Yes" color="success" size="small" />
+                    ) : (
+                      <Chip label="No" color="default" size="small" />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Box
+                      sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                    >
+                      {donor.blood_test_exists ? (
+                        <>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => viewPrediction(donor)}
+                          >
+                            View Prediction
+                          </Button>
+                          <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => openBloodTestForm(donor, true)}
+                          >
+                            Edit Test
+                          </Button>
+                          {donor.assignment_status !== "completed" && (
+                            <Button
+                              variant="outlined"
+                              color="success"
+                              size="small"
+                              onClick={() =>
+                                markAsCompleted(donor.assignment_id)
+                              }
+                            >
+                              Mark Completed
+                            </Button>
+                          )}
+                        </>
+                      ) : (
                         <Button
                           variant="contained"
-                          color="success"
-                          onClick={() => markAsCompleted(donor.assignment_id)}
-                          startIcon={<CheckCircleIcon />}
-                          sx={{ ml: 1 }}
+                          size="small"
+                          onClick={() => openBloodTestForm(donor, false)}
                         >
-                          Mark Completed
+                          Submit Test
+                        </Button>
+                      )}
+
+                      {/* AI Prediction button */}
+                      {donor.blood_test_exists && !donor.blood_test.health_risk_prediction && (
+                        <Button
+                          variant="outlined"
+                          color="secondary"
+                          size="small"
+                          onClick={() => generatePrediction(donor.assignment_id)}
+                          sx={{ mt: 1 }}
+                        >
+                          Generate AI Prediction
                         </Button>
                       )}
                     </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            ))}
-          </Box>
-        )}
-      </TabPanel>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
 
-      <TabPanel value={tabValue} index={1}>
-        <Typography variant="h5" gutterBottom>
-          Completed Blood Tests
-        </Typography>
-
-        {filteredDonors.length === 0 ? (
-          <Paper sx={{ p: 3, textAlign: 'center' }}>
-            <Typography>No completed blood tests yet.</Typography>
-            <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-              Completed blood tests will appear here once they are submitted.
-            </Typography>
-          </Paper>
-        ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {filteredDonors.map((donor) => (
-              <Card key={donor.id} variant="outlined">
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                    <Box>
-                      <Typography variant="h6">
-                        {donor.first_name} {donor.last_name}
-                      </Typography>
-                      <Typography color="textSecondary">
-                        Blood Type: {donor.blood_group}
-                      </Typography>
-                      <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                        <Chip 
-                          label="Blood Test Completed" 
-                          color="success" 
-                          size="small" 
-                          icon={<CheckCircleIcon />}
-                        />
-                        {donor.life_saved && (
-                          <Chip 
-                            label="Life Saved" 
-                            color="error" 
-                            size="small" 
-                            variant="outlined"
-                          />
-                        )}
-                      </Box>
-                      {donor.blood_test && (
-                        <Box sx={{ mt: 1 }}>
-                          <Typography variant="body2">
-                            <strong>Sugar Level:</strong> {donor.blood_test.sugar_level} mg/dL
-                          </Typography>
-                          <Typography variant="body2">
-                            <strong>Hemoglobin:</strong> {donor.blood_test.hemoglobin} g/dL
-                          </Typography>
-                          <Typography variant="body2">
-                            <strong>Test Date:</strong> {new Date(donor.blood_test.created_at).toLocaleDateString()}
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
-                    <Button
-                      variant="outlined"
-                      onClick={() => openEditTestDialog(donor)}
-                      startIcon={<EditIcon />}
-                    >
-                      Edit Test Results
-                    </Button>
-                  </Box>
-                </CardContent>
-              </Card>
-            ))}
-          </Box>
-        )}
-      </TabPanel>
-
-      {/* Prediction Dialog */}
-      <Dialog open={showPredictionDialog} onClose={() => setShowPredictionDialog(false)} maxWidth="md" fullWidth>
+      {/* Health Prediction Dialog */}
+      <Dialog
+        open={predictionDialogOpen}
+        onClose={() => setPredictionDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
         <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <LocalHospitalIcon color="primary" />
-            <Typography variant="h6">Health Prediction</Typography>
-          </Box>
+          Health Prediction for {selectedDonor?.first_name}{" "}
+          {selectedDonor?.last_name}
         </DialogTitle>
         <DialogContent>
-          {currentPrediction && (
+          {selectedDonor?.blood_test ? (
             <Box sx={{ mt: 2 }}>
-              <Typography variant="h6" gutterBottom color="primary">
-                AI Health Assessment
+              {/* Blood Test Results */}
+              <Typography variant="h6" gutterBottom>
+                Blood Test Results:
               </Typography>
-              {currentPrediction.prediction_confidence && (
-                <Chip 
-                  label={`Confidence: ${currentPrediction.prediction_confidence}%`} 
-                  color="info" 
-                  sx={{ mb: 2 }}
-                />
-              )}
-              <Typography variant="body1" paragraph sx={{ fontWeight: 'bold' }}>
-                {currentPrediction.disease_prediction}
-              </Typography>
-              <Paper variant="outlined" sx={{ p: 2, backgroundColor: '#f5f5f5' }}>
-                <Typography variant="body2" style={{ whiteSpace: 'pre-wrap' }}>
-                  {currentPrediction.health_risk_prediction}
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={6}>
+                  <Typography variant="body2">
+                    <strong>Sugar Level:</strong>{" "}
+                    {selectedDonor.blood_test.sugar_level} mg/dL
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2">
+                    <strong>Hemoglobin:</strong>{" "}
+                    {selectedDonor.blood_test.hemoglobin} g/dL
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2">
+                    <strong>Uric Acid:</strong>{" "}
+                    {selectedDonor.blood_test.uric_acid_level} mg/dL
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2">
+                    <strong>WBC Count:</strong>{" "}
+                    {selectedDonor.blood_test.wbc_count} cells/mcL
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2">
+                    <strong>RBC Count:</strong>{" "}
+                    {selectedDonor.blood_test.rbc_count} million cells/mcL
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2">
+                    <strong>Platelet Count:</strong>{" "}
+                    {selectedDonor.blood_test.platelet_count} platelets/mcL
+                  </Typography>
+                </Grid>
+                {selectedDonor.blood_test.life_saved && (
+                  <Grid item xs={12}>
+                    <Typography variant="body2" color="success.main">
+                      <strong>🎉 Life Saved:</strong> This donation was used to
+                      save a life!
+                    </Typography>
+                  </Grid>
+                )}
+              </Grid>
+
+              {/* Health Prediction */}
+              {selectedDonor.blood_test.health_risk_prediction ? (
+                <>
+                  <Typography variant="h6" gutterBottom>
+                    Health Analysis:
+                  </Typography>
+                  <Typography
+                    variant="body1"
+                    paragraph
+                    sx={{
+                      whiteSpace: "pre-wrap",
+                      backgroundColor: "#f5f5f5",
+                      p: 2,
+                      borderRadius: 1,
+                    }}
+                  >
+                    {selectedDonor.blood_test.health_risk_prediction}
+                  </Typography>
+
+                  {selectedDonor.blood_test.prediction_confidence && (
+                    <Typography variant="body2" color="textSecondary">
+                      <strong>Confidence Level:</strong>{" "}
+                      {selectedDonor.blood_test.prediction_confidence}%
+                    </Typography>
+                  )}
+                </>
+              ) : (
+                <Typography variant="body2" color="textSecondary">
+                  Health prediction is being generated. Please check back later.
                 </Typography>
-              </Paper>
+              )}
             </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowPredictionDialog(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Blood Test Dialog */}
-      <Dialog open={bloodTestDialog} onClose={() => setBloodTestDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Submit Blood Test Results</DialogTitle>
-        <DialogContent>
-          {selectedDonor && (
-            <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-              For: {selectedDonor.first_name} {selectedDonor.last_name} ({selectedDonor.blood_group})
+          ) : (
+            <Typography>
+              No blood test data available for this donor.
             </Typography>
           )}
-
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Sugar Level (mg/dL)"
-                type="number"
-                value={bloodTestData.sugar_level}
-                onChange={(e) => setBloodTestData({...bloodTestData, sugar_level: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Uric Acid Level (mg/dL)"
-                type="number"
-                value={bloodTestData.uric_acid_level}
-                onChange={(e) => setBloodTestData({...bloodTestData, uric_acid_level: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="WBC Count (cells/mcL)"
-                type="number"
-                value={bloodTestData.wbc_count}
-                onChange={(e) => setBloodTestData({...bloodTestData, wbc_count: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="RBC Count (million cells/mcL)"
-                type="number"
-                value={bloodTestData.rbc_count}
-                onChange={(e) => setBloodTestData({...bloodTestData, rbc_count: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Hemoglobin (g/dL)"
-                type="number"
-                value={bloodTestData.hemoglobin}
-                onChange={(e) => setBloodTestData({...bloodTestData, hemoglobin: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Platelet Count (platelets/mcL)"
-                type="number"
-                value={bloodTestData.platelet_count}
-                onChange={(e) => setBloodTestData({...bloodTestData, platelet_count: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={bloodTestData.life_saved}
-                    onChange={(e) => setBloodTestData({...bloodTestData, life_saved: e.target.checked})}
-                  />
-                }
-                label="Mark as Life Saved (send special notification to donor)"
-              />
-            </Grid>
-          </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBloodTestDialog(false)}>Cancel</Button>
-          <Button 
-            onClick={handleBloodTestSubmit} 
-            variant="contained" 
-            disabled={loading}
-          >
-            Submit Results
-          </Button>
+          <Button onClick={() => setPredictionDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Edit Blood Test Dialog */}
-      <Dialog open={editTestDialog} onClose={() => setEditTestDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Edit Blood Test Results</DialogTitle>
-        <DialogContent>
-          {selectedDonor && (
-            <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-              For: {selectedDonor.first_name} {selectedDonor.last_name} ({selectedDonor.blood_group})
-            </Typography>
-          )}
+      {/* Blood Test Form Dialog */}
+      <BloodTestForm
+        open={bloodTestFormOpen}
+        onClose={() => setBloodTestFormOpen(false)}
+        onSubmit={handleBloodTestSubmit}
+        initialData={selectedDonor?.blood_test}
+        isEdit={isEditMode}
+      />
 
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Sugar Level (mg/dL)"
-                type="number"
-                value={bloodTestData.sugar_level}
-                onChange={(e) => setBloodTestData({...bloodTestData, sugar_level: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Uric Acid Level (mg/dL)"
-                type="number"
-                value={bloodTestData.uric_acid_level}
-                onChange={(e) => setBloodTestData({...bloodTestData, uric_acid_level: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="WBC Count (cells/mcL)"
-                type="number"
-                value={bloodTestData.wbc_count}
-                onChange={(e) => setBloodTestData({...bloodTestData, wbc_count: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="RBC Count (million cells/mcL)"
-                type="number"
-                value={bloodTestData.rbc_count}
-                onChange={(e) => setBloodTestData({...bloodTestData, rbc_count: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Hemoglobin (g/dL)"
-                type="number"
-                value={bloodTestData.hemoglobin}
-                onChange={(e) => setBloodTestData({...bloodTestData, hemoglobin: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Platelet Count (platelets/mcL)"
-                type="number"
-                value={bloodTestData.platelet_count}
-                onChange={(e) => setBloodTestData({...bloodTestData, platelet_count: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={bloodTestData.life_saved}
-                    onChange={(e) => setBloodTestData({...bloodTestData, life_saved: e.target.checked})}
-                  />
-                }
-                label="Mark as Life Saved (send special notification to donor)"
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditTestDialog(false)}>Cancel</Button>
-          <Button 
-            onClick={handleBloodTestUpdate} 
-            variant="contained" 
-            disabled={loading}
-          >
-            Update Results
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={!!error}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+      >
+        <Alert severity="error" onClose={handleCloseSnackbar}>
+          {error}
+        </Alert>
+      </Snackbar>
+
+      <Snackbar
+        open={!!success}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+      >
+        <Alert severity="success" onClose={handleCloseSnackbar}>
+          {success}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

@@ -1,5 +1,11 @@
 from django.shortcuts import get_object_or_404
 from django.http import Http404
+from django.core.mail import send_mail
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.contrib.auth.tokens import default_token_generator
+from django.urls import reverse
+from django.conf import settings
 from rest_framework import status, viewsets, permissions
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -9,6 +15,7 @@ from django.shortcuts import get_object_or_404
 from django.middleware.csrf import get_token
 from django.db.models import Q
 import traceback
+from .utils.tokens import hospital_user_token_generator
 from django.utils import timezone
 from .models import User, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification, HospitalUser, DonorHospitalAssignment
 from .serializers import (
@@ -16,7 +23,9 @@ from .serializers import (
     HospitalSerializer, BloodRequestSerializer, DonationSerializer, 
     BloodTestSerializer, BloodTestUpdateSerializer, ChatRoomSerializer, 
     MessageSerializer, NotificationSerializer, HospitalRegistrationSerializer,
-    HospitalLoginSerializer, HospitalUserSerializer, DonorHospitalAssignmentSerializer
+    HospitalLoginSerializer, HospitalUserSerializer, DonorHospitalAssignmentSerializer,
+    PasswordResetConfirmSerializer, PasswordResetRequestSerializer,
+    HospitalPasswordResetConfirmSerializer, HospitalPasswordResetRequestSerializer
 )
 import requests
 from django.conf import settings
@@ -44,11 +53,11 @@ def get_hospital_user_tokens(hospital_user):
 
 class AuthViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
-    
+
     @action(detail=False, methods=['get'])
     def csrf(self, request):
         return Response({'csrfToken': get_token(request)})
-    
+
     @action(detail=False, methods=['post'])
     def register(self, request):
         serializer = UserRegistrationSerializer(data=request.data)
@@ -62,7 +71,7 @@ class AuthViewSet(viewsets.ViewSet):
                 'message': 'User created successfully'
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
     @action(detail=False, methods=['post'])
     def login(self, request):
         serializer = UserLoginSerializer(data=request.data)
@@ -76,10 +85,55 @@ class AuthViewSet(viewsets.ViewSet):
                 'message': 'Login successful'
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
     @action(detail=False, methods=['post'])
     def logout(self, request):
         return Response({'message': 'Logout successful'})
+
+    @action(detail=False, methods=['post'])
+    def request_password_reset(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+            try:
+                user = User.objects.get(email=email)
+                token = default_token_generator.make_token(user)
+                uid = urlsafe_base64_encode(force_bytes(user.pk))
+                
+                reset_url = f"{settings.FRONTEND_URL}/reset-password/{uid}/{token}/"
+                
+                send_mail(
+                    'Password Reset Request',
+                    f'Click the link to reset your password: {reset_url}',
+                    settings.DEFAULT_FROM_EMAIL,
+                    [email],
+                    fail_silently=False,
+                )
+                
+                return Response({'message': 'Password reset email sent'})
+            except User.DoesNotExist:
+                return Response({'error': 'No account found with this email address'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def reset_password(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                uid = force_str(urlsafe_base64_decode(serializer.validated_data['token'].split('/')[-2]))
+                user = User.objects.get(pk=uid)
+                token = serializer.validated_data['token'].split('/')[-1]
+                
+                if default_token_generator.check_token(user, token):
+                    user.set_password(serializer.validated_data['new_password'])
+                    user.save()
+                    return Response({'message': 'Password reset successfully'})
+                else:
+                    return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+            except (User.DoesNotExist, ValueError, TypeError):
+                return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class HospitalAuthViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
@@ -125,6 +179,48 @@ class HospitalAuthViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def test(self, request):
         return Response({'message': 'Hospital auth endpoint is working!'})
+    
+    @action(detail=False, methods=['post'])
+    def request_password_reset(self, request):
+        serializer = HospitalPasswordResetRequestSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+            hospital_user = HospitalUser.objects.get(email=email)
+            
+            token = hospital_user_token_generator.make_token(hospital_user)
+            uid = urlsafe_base64_encode(force_bytes(hospital_user.pk))
+            
+            reset_url = f"{settings.FRONTEND_URL}/hospital-reset-password/{uid}/{token}/"
+            
+            send_mail(
+                'Hospital Password Reset Request',
+                f'Click the link to reset your hospital account password: {reset_url}',
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                fail_silently=False,
+            )
+            
+            return Response({'message': 'Password reset email sent'})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def reset_password(self, request):
+        serializer = HospitalPasswordResetConfirmSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                uid = force_str(urlsafe_base64_decode(serializer.validated_data['token'].split('/')[-2]))
+                hospital_user = HospitalUser.objects.get(pk=uid)
+                token = serializer.validated_data['token'].split('/')[-1]
+                
+                if hospital_user_token_generator.check_token(hospital_user, token):
+                    hospital_user.set_password(serializer.validated_data['new_password'])
+                    hospital_user.save()
+                    return Response({'message': 'Password reset successfully'})
+                else:
+                    return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+            except (HospitalUser.DoesNotExist, ValueError, TypeError):
+                return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = TokenObtainPairSerializer
@@ -344,13 +440,12 @@ class BloodRequestViewSet(viewsets.ModelViewSet):
 
 class DonationViewSet(viewsets.ModelViewSet):
     queryset = Donation.objects.all().select_related(
-        'donor', 'blood_request', 'blood_request__patient', 'hospital'
+        'donor', 'blood_request', 'blood_request__patient', 'hospital', 'blood_test'
     )
     serializer_class = DonationSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
-        # Users can only see their own donations
         if self.request.user.is_authenticated:
             return Donation.objects.filter(donor=self.request.user).select_related(
                 'blood_request', 'blood_request__patient', 'hospital'
@@ -432,11 +527,12 @@ class DonationViewSet(viewsets.ModelViewSet):
 
             print(f"Chat room {'created' if created else 'exists'}: {chat_room.id}")
 
+            # Notify patient that their request has been accepted
             Notification.objects.create(
                 user=donation.blood_request.patient,
                 notification_type='donation_accepted',
-                title='Donation Accepted',
-                message=f'{donation.donor.get_full_name()} has accepted your blood request. Click to chat with them.',
+                title='Blood Request Accepted',
+                message=f'Your blood request has been accepted by {donation.donor.get_full_name()}. You can now chat with them to coordinate the donation.',
                 related_id=chat_room.id
             )
 
@@ -728,10 +824,8 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
         return [HospitalUserAuthentication]
     
     def list(self, request):
-        # Get the hospital from the authenticated hospital user
         hospital = request.user.hospital
         
-        # Get ALL assignments for this hospital (both pending and completed)
         assignments = DonorHospitalAssignment.objects.filter(
             hospital=hospital
         ).select_related('donor', 'donation', 'donation__blood_test')
@@ -741,6 +835,11 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
             donor = assignment.donor
             donation = assignment.donation
             blood_test_exists = hasattr(donation, 'blood_test')
+            
+            blood_test_data = None
+            if blood_test_exists:
+                blood_test_serializer = BloodTestSerializer(donation.blood_test)
+                blood_test_data = blood_test_serializer.data
             
             donors_data.append({
                 'id': donor.id,
@@ -756,7 +855,7 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
                 'donation_status': donation.status,
                 'assignment_status': assignment.status,
                 'blood_test_exists': blood_test_exists,
-                'blood_test': BloodTestSerializer(donation.blood_test).data if blood_test_exists else None,
+                'blood_test': blood_test_data,
                 'life_saved': donation.blood_test.life_saved if blood_test_exists else False,
                 'assigned_at': assignment.assigned_at,
                 'completed_at': assignment.completed_at,
@@ -764,19 +863,25 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
             })
         
         return Response(donors_data)
-    
+
     @action(detail=True, methods=['post'])
     def submit_blood_test(self, request, pk=None):
         try:
-            assignment = DonorHospitalAssignment.objects.get(id=pk, hospital=request.user.hospital)
+            hospital_user = self.request.user
+            hospital = hospital_user.hospital
+            
+            print(f"Submitting blood test for assignment ID: {pk}")
+            
+            assignment = DonorHospitalAssignment.objects.get(id=pk, hospital=hospital)
+            print(f"Assignment found: {assignment.id}")
+            
             donation = assignment.donation
             donor = donation.donor
             
-            # Create or update blood test
             blood_test, created = BloodTest.objects.get_or_create(
                 donation=donation,
                 defaults={
-                    'tested_by': request.user.hospital,
+                    'tested_by': hospital,
                     **request.data
                 }
             )
@@ -786,79 +891,85 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
                     setattr(blood_test, attr, value)
                 blood_test.save()
             
-            # Generate AI prediction if this is a new test or major values changed
-            if created or self._should_regenerate_prediction(blood_test, request.data):
-                try:
-                    predictor = HealthPredictor()
-                    prediction_data = {
-                        'donor_name': f"{donor.first_name} {donor.last_name}",
-                        'donor_age': donor.age,
-                        'donor_gender': donor.gender,
-                        'sugar_level': blood_test.sugar_level,
-                        'hemoglobin': blood_test.hemoglobin,
-                        'uric_acid_level': blood_test.uric_acid_level,
-                        'wbc_count': blood_test.wbc_count,
-                        'rbc_count': blood_test.rbc_count,
-                        'platelet_count': blood_test.platelet_count
-                    }
-                    
-                    prediction = predictor.predict_health_risks(prediction_data)
-                    if prediction:
-                        blood_test.health_risk_prediction = prediction['full_prediction']
-                        blood_test.disease_prediction = prediction['summary']
-                        blood_test.prediction_confidence = prediction['confidence']
-                        blood_test.save()
-                        
-                        # Send detailed notification to donor
-                        Notification.objects.create(
-                            user=donor,
-                            notification_type='health_alert',
-                            title='Detailed Health Analysis Available',
-                            message=prediction['notification_message'],
-                            related_id=blood_test.id
-                        )
-                except Exception as e:
-                    logger.error(f"Error generating AI prediction: {str(e)}")
-                    # Send basic notification if prediction fails
-                    Notification.objects.create(
-                        user=donor,
-                        notification_type='health_alert',
-                        title='Blood Test Results Ready',
-                        message='Your blood test results have been processed. Please check your dashboard for details.',
-                        related_id=blood_test.id
-                    )
+            print(f"Blood test {'created' if created else 'updated'}: {blood_test.id}")
             
-            # DESTROY CHATROOM when blood test is completed
+            # GENERATE AI PREDICTION USING OPENAI
             try:
-                chat_room = ChatRoom.objects.get(donation=donation)
-                chat_room.is_active = False  # Soft delete instead of hard delete
-                chat_room.save()
+                print(f"Using OpenAI API key: {settings.OPENAI_API_KEY[:10]}...")
                 
-                # Optional: Send a notification to both users
+                predictor = HealthPredictor()
+                prediction_data = {
+                    'donor_name': f"{donor.first_name} {donor.last_name}",
+                    'donor_age': donor.age,
+                    'donor_gender': donor.gender,
+                    'sugar_level': blood_test.sugar_level,
+                    'hemoglobin': blood_test.hemoglobin,
+                    'uric_acid_level': blood_test.uric_acid_level,
+                    'wbc_count': blood_test.wbc_count,
+                    'rbc_count': blood_test.rbc_count,
+                    'platelet_count': blood_test.platelet_count
+                }
+                
+                print(f"Generating AI prediction with data: {prediction_data}")
+                
+                prediction = predictor.predict_health_risks(prediction_data)
+                
+                # Save the prediction
+                blood_test.health_risk_prediction = prediction['full_prediction']
+                blood_test.disease_prediction = prediction['summary']
+                blood_test.prediction_confidence = prediction['confidence']
+                blood_test.save()
+                
+                print(f"AI prediction generated successfully: {prediction['summary']}")
+                
+                # Send notification to donor
                 Notification.objects.create(
                     user=donor,
-                    notification_type='donation_completed',
-                    title='Chat Room Closed',
-                    message='The chat room for your donation has been closed as the blood test is completed.',
-                    related_id=donation.id
+                    notification_type='health_alert',
+                    title='Blood Test Analysis Complete',
+                    message=prediction['notification_message'],
+                    related_id=blood_test.id
                 )
+                
+            except Exception as e:
+                print(f"Error in AI prediction: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                
+                # Create fallback analysis
+                blood_test.health_risk_prediction = f"Blood Test Results:\n\n- Sugar Level: {blood_test.sugar_level} mg/dL\n- Hemoglobin: {blood_test.hemoglobin} g/dL\n- Uric Acid: {blood_test.uric_acid_level} mg/dL\n- WBC Count: {blood_test.wbc_count} cells/mcL\n- RBC Count: {blood_test.rbc_count} million cells/mcL\n- Platelet Count: {blood_test.platelet_count} platelets/mcL\n\nPlease consult with a healthcare professional for detailed analysis."
+                blood_test.disease_prediction = "Blood test results available"
+                blood_test.prediction_confidence = 75
+                blood_test.save()
                 
                 Notification.objects.create(
-                    user=donation.blood_request.patient,
-                    notification_type='donation_completed',
-                    title='Chat Room Closed',
-                    message='The chat room for your blood request has been closed as the donation process is completed.',
-                    related_id=donation.id
+                    user=donor,
+                    notification_type='health_alert',
+                    title='Blood Test Results Ready',
+                    message='Your blood test results have been processed. Please check your dashboard for details.',
+                    related_id=blood_test.id
                 )
-                
+            
+            # Close the chatroom
+            try:
+                chat_room = ChatRoom.objects.get(donation=donation)
+                chat_room.is_active = False
+                chat_room.save()
             except ChatRoom.DoesNotExist:
-                logger.warning(f"No chat room found for donation {donation.id}")
+                pass
             
-            return Response(BloodTestSerializer(blood_test).data)
-            
+            # Return the complete blood test data
+            blood_test_serializer = BloodTestSerializer(blood_test)
+            return Response(blood_test_serializer.data)
+                
         except DonorHospitalAssignment.DoesNotExist:
             return Response({'error': 'Assignment not found'}, status=404)
-    
+        except Exception as e:
+            print(f"Unexpected error in submit_blood_test: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response({'error': 'Internal server error'}, status=500)
+
     @action(detail=True, methods=['put'])
     def update_blood_test(self, request, pk=None):
         try:
@@ -872,12 +983,10 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
             blood_test = donation.blood_test
             life_saved_updated = 'life_saved' in request.data and request.data['life_saved'] != blood_test.life_saved
             
-            # Update blood test fields
             for attr, value in request.data.items():
                 setattr(blood_test, attr, value)
             blood_test.save()
             
-            # If life_saved was set to True, send notification
             if life_saved_updated and blood_test.life_saved:
                 Notification.objects.create(
                     user=donor,
@@ -887,7 +996,6 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
                     related_id=donation.id
                 )
             
-            # Regenerate prediction if important values changed
             if self._should_regenerate_prediction(blood_test, request.data):
                 predictor = HealthPredictor()
                 prediction_data = {
@@ -913,9 +1021,66 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
             
         except DonorHospitalAssignment.DoesNotExist:
             return Response({'error': 'Assignment not found'}, status=404)
-
+        
+    @action(detail=True, methods=['post'])
+    def generate_prediction(self, request, pk=None):
+        """Force generate AI prediction for a blood test"""
+        try:
+            assignment = DonorHospitalAssignment.objects.get(id=pk, hospital=request.user.hospital)
+            donation = assignment.donation
+            
+            if not hasattr(donation, 'blood_test'):
+                return Response({'error': 'No blood test found for this donation'}, status=status.HTTP_404_NOT_FOUND)
+            
+            blood_test = donation.blood_test
+            donor = donation.donor
+            
+            print(f"Generating AI prediction for donation: {donation.id}, donor: {donor.username}")
+            
+            predictor = HealthPredictor()
+            prediction_data = {
+                'donor_name': f"{donor.first_name} {donor.last_name}",
+                'donor_age': donor.age,
+                'donor_gender': donor.gender,
+                'sugar_level': blood_test.sugar_level or 0,
+                'hemoglobin': blood_test.hemoglobin or 0,
+                'uric_acid_level': blood_test.uric_acid_level or 0,
+                'wbc_count': blood_test.wbc_count or 0,
+                'rbc_count': blood_test.rbc_count or 0,
+                'platelet_count': blood_test.platelet_count or 0
+            }
+            
+            prediction = predictor.predict_health_risks(prediction_data)
+            
+            print(f"Prediction generated: {prediction['summary'][:100]}...")
+            
+            blood_test.health_risk_prediction = prediction['full_prediction']
+            blood_test.disease_prediction = prediction['summary']
+            blood_test.prediction_confidence = prediction['confidence']
+            blood_test.save()
+            
+            Notification.objects.create(
+                user=donor,
+                notification_type='health_alert',
+                title='AI Health Analysis Complete',
+                message=f'AI health analysis completed: {prediction["summary"]}',
+                related_id=blood_test.id
+            )
+            
+            return Response({
+                'message': 'AI prediction generated successfully',
+                'summary': prediction['summary'],
+                'confidence': prediction['confidence']
+            })
+            
+        except DonorHospitalAssignment.DoesNotExist:
+            return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error generating prediction: {str(e)}")
+            return Response({'error': f'Failed to generate prediction: {str(e)}'}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
     def _should_regenerate_prediction(self, blood_test, new_data):
-        """Check if prediction should be regenerated based on changed values"""
         important_fields = ['sugar_level', 'hemoglobin', 'uric_acid_level', 'wbc_count', 'rbc_count', 'platelet_count']
         for field in important_fields:
             if field in new_data and getattr(blood_test, field) != new_data[field]:
@@ -927,29 +1092,24 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
         try:
             print(f"Marking assignment {pk} as completed")
             
-            # Get the assignment
             assignment = DonorHospitalAssignment.objects.get(id=pk)
             print(f"Assignment found: {assignment.id}")
             
-            # Check if the hospital user has permission for this assignment
             if assignment.hospital != request.user.hospital:
                 return Response({'error': 'You do not have permission to complete this assignment'}, status=403)
             
             donation = assignment.donation
             print(f"Donation: {donation.id}, Current status: {donation.status}")
             
-            # Update assignment status to completed
             assignment.status = 'completed'
             assignment.completed_at = timezone.now()
             assignment.save()
             print(f"Assignment marked as completed")
             
-            # Update donation status - this will automatically set donation_date via save() method
             donation.status = 'completed'
             donation.save()
             print(f"Donation marked as completed, date: {donation.donation_date}")
             
-            # Destroy the chatroom
             try:
                 chat_room = ChatRoom.objects.get(donation=donation)
                 chat_room.is_active = False
@@ -974,18 +1134,49 @@ class HospitalDashboardViewSet(viewsets.ViewSet):
             traceback.print_exc()
             return Response({'error': str(e)}, status=400)
     
-    
+    @action(detail=False, methods=['get'])
+    def test_openai(self, request):
+        """Test OpenAI API connection"""
+        try:
+            predictor = HealthPredictor()
+            test_data = {
+                'donor_name': 'Test User',
+                'donor_age': 35,
+                'donor_gender': 'M',
+                'sugar_level': 95,
+                'hemoglobin': 14.5,
+                'uric_acid_level': 5.2,
+                'wbc_count': 7500,
+                'rbc_count': 5.2,
+                'platelet_count': 250000
+            }
+            
+            result = predictor.predict_health_risks(test_data)
+            
+            return Response({
+                'status': 'success',
+                'api_key_configured': bool(settings.OPENAI_API_KEY),
+                'api_key_prefix': settings.OPENAI_API_KEY[:10] + '...' if settings.OPENAI_API_KEY else None,
+                'prediction': result
+            })
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'error': str(e),
+                'api_key_configured': bool(settings.OPENAI_API_KEY),
+                'api_key_prefix': settings.OPENAI_API_KEY[:10] + '...' if settings.OPENAI_API_KEY else None
+            }, status=500)
+
 class DonorHospitalAssignmentViewSet(viewsets.ModelViewSet):
     queryset = DonorHospitalAssignment.objects.all()
     serializer_class = DonorHospitalAssignmentSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
-        # Hospital users can only see assignments for their hospital
         if hasattr(self.request.user, 'hospital'):
             return DonorHospitalAssignment.objects.filter(hospital=self.request.user.hospital)
-        # Regular users can only see their own assignments
-        elif hasattr(self.request.user, 'blood_group'):  # Regular user
+        elif hasattr(self.request.user, 'blood_group'):
             return DonorHospitalAssignment.objects.filter(donor=self.request.user)
         return DonorHospitalAssignment.objects.none()
     
@@ -1139,99 +1330,3 @@ def create_chatroom_for_donation(request, donation_id):
         
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
-@action(detail=True, methods=['post'])
-def submit_blood_test(self, request, pk=None):
-    try:
-        hospital_user = self.request.user
-        hospital = hospital_user.hospital
-        
-        print(f"Submitting blood test for donation ID: {pk}")
-        
-        # Get the donation
-        donation = Donation.objects.get(id=pk, hospital=hospital)
-        print(f"Found donation: {donation.id}, Donor: {donation.donor.username}")
-        
-        if hasattr(donation, 'blood_test'):
-            return Response({'error': 'Blood test already submitted for this donation'}, 
-                           status=status.HTTP_400_BAD_REQUEST)
-        
-        # Create the blood test object directly
-        blood_test = BloodTest.objects.create(
-            donation=donation,
-            tested_by=hospital,
-            sugar_level=request.data.get('sugar_level'),
-            uric_acid_level=request.data.get('uric_acid_level'),
-            wbc_count=request.data.get('wbc_count'),
-            rbc_count=request.data.get('rbc_count'),
-            hemoglobin=request.data.get('hemoglobin'),
-            platelet_count=request.data.get('platelet_count'),
-            life_saved=request.data.get('life_saved', False)
-        )
-        
-        print(f"Blood test created: {blood_test.id}")
-        
-        # Close the chat room
-        if hasattr(donation, 'chat_room'):
-            chat_room = donation.chat_room
-            chat_room.is_active = False
-            chat_room.save()
-            print(f"Chat room closed: {chat_room.id}")
-        
-        # Update donation status
-        donation.status = 'completed'
-        donation.donation_date = timezone.now()
-        donation.save()
-        print(f"Donation status updated to completed")
-        
-        # Generate health risk prediction using AI
-        health_risk = self.predict_health_risk(blood_test)
-        blood_test.health_risk_prediction = health_risk
-        blood_test.save()
-        print(f"Health risk prediction added: {health_risk[:50]}...")
-        
-        # After generating the health risk prediction
-        health_risk = self.predict_health_risk(blood_test)
-        print(f"Generated health risk: {health_risk}")
-
-        # Refresh the blood test object and save the prediction
-        blood_test.refresh_from_db()
-        blood_test.health_risk_prediction = health_risk
-        blood_test.save()
-
-        # Verify the prediction was saved
-        blood_test.refresh_from_db()
-        print(f"Verified health risk saved: {blood_test.health_risk_prediction is not None}")
-        
-        # Send notification to donor
-        Notification.objects.create(
-            user=donation.donor,
-            notification_type='health_alert',
-            title='Blood Test Results Available',
-            message=f'Your blood test results are ready. {health_risk}',
-            related_id=blood_test.id
-        )
-        print("Notification sent to donor")
-        
-        # Check if life was saved
-        if blood_test.life_saved:
-            Notification.objects.create(
-                user=donation.donor,
-                notification_type='life_saved',
-                title='Life Saved!',
-                message='Your blood donation has saved a life! Thank you for your heroic contribution.',
-                related_id=donation.id
-            )
-            print("Life saved notification sent")
-        
-        return Response(BloodTestSerializer(blood_test).data)
-        
-    except Donation.DoesNotExist:
-        print(f"Donation not found or not assigned to this hospital: {pk}")
-        return Response({'error': 'Donation not found or not assigned to your hospital'}, 
-                       status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        print(f"Error in submit_blood_test: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

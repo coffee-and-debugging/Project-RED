@@ -6,6 +6,7 @@ import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { FaArrowLeft } from "react-icons/fa";
 
 export default function Register() {
   const [formData, setFormData] = useState({
@@ -65,11 +66,10 @@ export default function Register() {
         const errorData = err.response.data;
 
         // Show all errors in a single toast
-        const allErrors = Object.entries(errorData).map(
-          ([field, messages]) =>
-            Array.isArray(messages)
-              ? `${field}: ${messages.join(", ")}`
-              : `${field}: ${messages}`.join("\n")
+        const allErrors = Object.entries(errorData).map(([field, messages]) =>
+          Array.isArray(messages)
+            ? `${field}: ${messages.join(", ")}`
+            : `${field}: ${messages}`.join("\n")
         );
 
         toast.update(toastId, {
@@ -94,6 +94,12 @@ export default function Register() {
   return (
     <div className="min-h-screen font-sans">
       <div className="max-w-6xl md:w-3xl mx-auto my-6 p-4 sm:p-6 lg:p-8 bg-cyan-50 shadow-2xl  rounded-2xl ">
+        <div
+          onClick={() => navigate("/")}
+          className="bg-gray-300 p-2 rounded-lg w-fit shadow-xl"
+        >
+          <FaArrowLeft className="text-lg cursor-pointer hover:text-blue-600" />
+        </div>
         <h2 className="text-2xl text-center font-bold mb-4 text-red-400">
           Create User Account
         </h2>

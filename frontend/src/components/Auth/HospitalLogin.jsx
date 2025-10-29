@@ -10,13 +10,12 @@ import MenuItem from "@mui/material/MenuItem";
 import InputAdornment from "@mui/material/InputAdornment";
 import IconButton from "@mui/material/IconButton";
 import { FaArrowLeft } from "react-icons/fa";
-import { MdLogin } from "react-icons/md";
 
-export default function Login() {
+const HospitalLogin = () => {
   const [formData, setFormData] = useState({
     username: "",
     password: "",
-    role: "user",
+    role: "hospital",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -26,14 +25,14 @@ export default function Login() {
 
   // Load saved username from localStorage on component mount
   useEffect(() => {
-    const remember = localStorage.getItem("rememberMe") === "true";
-    const savedUserName = localStorage.getItem("rememberedUserName");
+    const remember = localStorage.getItem("hospitalRememberMe") === "true";
+    const savedUserName = localStorage.getItem("hospitalRememberedUserName");
 
     if (remember && savedUserName) {
       setFormData({
         username: savedUserName,
         password: "",
-        role: "user",
+        role: "hospital",
       });
       setRememberMe(true);
     }
@@ -49,11 +48,11 @@ export default function Login() {
 
     // Save or remove remembered username
     if (rememberMe) {
-      localStorage.setItem("rememberMe", "true");
-      localStorage.setItem("rememberedUserName", username);
+      localStorage.setItem("hospitalRememberMe", "true");
+      localStorage.setItem("hospitalRememberedUserName", username);
     } else {
-      localStorage.setItem("rememberMe", "false");
-      localStorage.removeItem("rememberedUserName");
+      localStorage.setItem("hospitalRememberMe", "false");
+      localStorage.removeItem("hospitalRememberedUserName");
     }
 
     // Basic Validation
@@ -63,19 +62,20 @@ export default function Login() {
     }
 
     // Login URL based on Role
-    let loginUrl = "http://127.0.0.1:8000/api/auth/login/";
-
+    let loginUrl = "http://127.0.0.1:8000/api/hospital-auth/login/";
+    
     const toastId = toast.loading("Logging in...");
     try {
       const res = await axios.post(loginUrl, { username, password });
       const token = res.data.access;
 
-      localStorage.setItem("token", token);
+      localStorage.setItem("hospitalToken", token);
 
       try {
-        const userInfo = jwtDecode(token);
-        console.log("Decoded JWT:", userInfo);
-        localStorage.setItem("user", JSON.stringify(userInfo));
+        const hospitalInfo = jwtDecode(token);
+        console.log("Decoded Hospital JWT:", hospitalInfo);
+        localStorage.setItem("hospitalInfo", JSON.stringify(hospitalInfo));
+        localStorage.setItem("hospitalId", hospitalInfo.user_id);
       } catch (decodeErr) {
         toast.update(toastId, {
           render: "Login failed: Invalid token received.",
@@ -95,7 +95,7 @@ export default function Login() {
 
       // Navigate after short delay & reload
       setTimeout(() => {
-        navigate(`/`);
+        navigate("/hospital-dashboard");
         // window.location.reload();
       }, 1600);
     } catch (err) {
@@ -112,33 +112,33 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-200 via-white to-cyan-200 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cyan-200 via-white to-red-200 px-4">
       <div className="w-full max-w-md p-8 relative shadow-xl rounded-2xl bg-white">
         <div
           onClick={() => navigate("/")}
-          className="absolute left-4 top-4 cursor-pointer text-gray-500 hover:text-red-500 transition shadow-xl"
+          className="absolute left-4 top-4 cursor-pointer text-gray-500 hover:text-red-500 transition rounded-lg shadow-xl"
         >
           <FaArrowLeft className="text-xl" />
         </div>
 
         {/* Title */}
-        <h2 className="text-3xl font-extrabold text-center text-red-700 mb-2">Project R.E.D</h2>
-        <p className="text-gray-500 text-center mb-6">
-          Sign in to continue to your account
-        </p>
+        <h2 className="text-3xl text-center font-extrabold text-cyan-700 mb-2">
+          Project R.E.D
+        </h2>
+        <p className="text-gray-500 text-center mb-6">Hospital Login - Secure Access</p>
 
-        {/* form */}
+        {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <TextField
             required
             fullWidth
             select
             name="role"
-            label="Selected Role"
-            value={formData.role}
+            label="Role"
+            value={formData.role }
             onChange={handleChange}
           >
-            <MenuItem value="user">User</MenuItem>
+            <MenuItem value="hospital">Hospital</MenuItem>
           </TextField>
 
           <TextField
@@ -146,24 +146,24 @@ export default function Login() {
             required
             fullWidth
             id="username"
-            label="Username"
+            label="Hospital Username"
             name="username"
             autoComplete="username"
+            autoFocus
             value={formData.username}
             onChange={handleChange}
           />
 
           <TextField
-            margin="normal"
             required
             fullWidth
             id="password"
             label="Password"
             name="password"
+            autoComplete="current-password"
             type={showPassword ? "text" : "password"}
             value={formData.password}
             onChange={handleChange}
-            autoComplete="current-password"
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
@@ -179,7 +179,7 @@ export default function Login() {
           />
 
           {/* Remember Me + Forgot Password */}
-          <div className=" flex justify-between items-center text-sm pt-2">
+          <div className="flex justify-between items-center text-sm pt-2">
             <label className="flex items-center gap-2 text-gray-700">
               <input
                 type="checkbox"
@@ -197,7 +197,6 @@ export default function Login() {
               >
                 Forgot Password?
               </button>
-            
           </div>
 
           {/* Forgot Modal */}
@@ -207,16 +206,15 @@ export default function Login() {
           />
           <button
             type="submit"
-            className="w-full bg-red-600 text-white font-semibold py-2 rounded-lg hover:bg-red-700 transition cursor-pointer flex items-center justify-center gap-2"
+            className="w-full bg-cyan-600 text-white font-semibold py-2 rounded-lg hover:bg-cyan-700 transition cursor-pointer"
           >
-            <MdLogin size={20} />
             Login
           </button>
 
           <p className="text-center text-gray-600 mt-4 text-sm">
-            Don't have an account?{" "}
+            Don't have a hospital account?{" "}
             <span
-              onClick={() => navigate("/register")}
+              onClick={() => navigate("/hospital-register")}
               className="text-blue-600 cursor-pointer hover:underline"
             >
               Register here
@@ -229,3 +227,4 @@ export default function Login() {
     </div>
   );
 }
+export default HospitalLogin;

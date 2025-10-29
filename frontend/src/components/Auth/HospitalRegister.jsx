@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { FiEye, FiEyeOff } from "react-icons/fi";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
-import { FaMapMarkerAlt } from "react-icons/fa";
+import { FaArrowLeft, FaMapMarkerAlt } from "react-icons/fa";
 import { TextField, Button } from "@mui/material";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -17,6 +17,7 @@ const HospitalRegister = () => {
     phone_number: "",
     address: "",
     name: "",
+    email: "",
     location_lat: "",
     location_long: "",
   });
@@ -81,7 +82,6 @@ const HospitalRegister = () => {
       setTimeout(() => {
         navigate("/login");
       }, 1600);
-      
     } catch (err) {
       if (err.response?.data) {
         const errorData = err.response.data;
@@ -115,6 +115,12 @@ const HospitalRegister = () => {
   return (
     <div className="min-h-screen font-sans">
       <div className="max-w-6xl md:w-3xl mx-auto my-6 p-4 sm:p-6 lg:p-8 bg-cyan-50 shadow-2xl  rounded-2xl ">
+        <div
+          onClick={() => navigate("/hospital-dashboard")}
+          className="bg-gray-300 p-2 rounded-lg w-fit shadow-xl"
+        >
+          <FaArrowLeft className="text-lg cursor-pointer hover:text-blue-600" />
+        </div>
         <h2 className="text-2xl text-center font-bold mb-4 text-red-400">
           Hospital Registration
         </h2>
@@ -151,11 +157,12 @@ const HospitalRegister = () => {
 
           {/* Hospital Fields */}
           <div className="grid grid-cols-2 gap-4">
-            {["name", "address", "username"].map((f) => {
+            {["name", "address", "username","email"].map((f) => {
               const nameMap = {
                 name: "Hospital Name",
                 address: "Hospital Address",
                 username: "Username",
+                email: "Email"
               };
               const label = f
                 .replace(/([A-Z])/g, " $1")
@@ -316,6 +323,7 @@ const HospitalRegister = () => {
               Sign In
             </a>
           </div>
+          <ToastContainer theme="light" />
         </form>
 
         {/* Terms & Conditions modal */}
@@ -328,25 +336,36 @@ const HospitalRegister = () => {
               >
                 ✕
               </button>
-              <h3 className="text-xl font-bold mb-4">Hospital Terms and Conditions</h3>
+              <h3 className="text-xl font-bold mb-4">
+                Hospital Terms and Conditions
+              </h3>
               <div className="overflow-auto max-h-[60vh]">
                 <p className="text-sm">
-                  Welcome, hospitals! By registering your institution, you agreeto the following terms: 
+                  Welcome, hospitals! By registering your institution, you
+                  agreeto the following terms:
                   <br />
                   <br />
-                  1. You certify that your hospital is officially licensed and authorized to operate.
+                  1. You certify that your hospital is officially licensed and
+                  authorized to operate.
                   <br />
-                  2. All information provided must be accurate and up-to-date, including contact details and location.
+                  2. All information provided must be accurate and up-to-date,
+                  including contact details and location.
                   <br />
-                  3. Patient and donor data handled via this platform must comply with applicable privacy and data protection laws.
+                  3. Patient and donor data handled via this platform must
+                  comply with applicable privacy and data protection laws.
                   <br />
-                  4. Misrepresentation of your hospital or misuse of the system may lead to account suspension or removal.
+                  4. Misrepresentation of your hospital or misuse of the system
+                  may lead to account suspension or removal.
                   <br />
-                  5. You are responsible for maintaining the security of your login credentials.
+                  5. You are responsible for maintaining the security of your
+                  login credentials.
                   <br />
-                  6. By using this platform, you consent to receive notifications and alerts relevant to blood donations and requests.
+                  6. By using this platform, you consent to receive
+                  notifications and alerts relevant to blood donations and
+                  requests.
                   <br />
-                  7. Project Red reserves the right to update these terms; continued use implies acceptance.
+                  7. Project Red reserves the right to update these terms;
+                  continued use implies acceptance.
                 </p>
               </div>
             </div>

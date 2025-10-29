@@ -24,15 +24,18 @@ import ChatRoom from "./components/Common/ChatRoom";
 import DonateBlood from "./components/blood/DonateBlood";
 import HosSidebar from "./pages/HospitalDashboard/HosSidebar";
 import HospiNavBar from "./pages/HospitalDashboard/HospiNavBar";
+import BloodInventory from "./pages/HospitalDashboard/BloodInventory";
+import Settings from "./pages/HospitalDashboard/Settings";
+import Reports from "./pages/HospitalDashboard/Reports";
+import HospitalLogin from "./components/Auth/HospitalLogin";
 
 const AppRoutes = () => {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route element={<NavBar />}>
-          <Route path="/register" element={<Register />} />
-          <Route path="/hospital_register" element={<HospitalRegister />} />
-          <Route path="/login" element={<Login />} />
           <Route path="/" element={<Home />} />
           <Route path="/about" element={<About />} />
           <Route path="/why-donate" element={<WhyDonate />} />
@@ -50,9 +53,15 @@ const AppRoutes = () => {
         </Route>
 
         {/* Hospital Routes */}
-        <Route element={<HosSidebar />}>
-          <Route path="/donar-dashboard" element={<DonarDashboard />} />
+        <Route path="/hospital_register" element={<HospitalRegister />} />
+        <Route path="/hospital-login" element={<HospitalLogin />} />
+
+        <Route element={<HospiNavBar />}>
+          <Route path="/donor-dashboard" element={<DonarDashboard />} />
+          {/* <Route path="/blood-inventory" element={<BloodInventory />} /> */}
           <Route path="/patient-dashboard" element={<PatientDashboard />} />
+          <Route path="/users-reports" element={<Reports />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/hospital-dashboard" element={<HospitalDashboard />} />
         </Route>
 

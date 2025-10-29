@@ -20,6 +20,7 @@ const HospitalRegister = () => {
     location_lat: '',
     location_long: '',
     username: '',
+    email: '',
     password: '',
     confirm_password: ''
   });
@@ -223,7 +224,7 @@ const HospitalRegister = () => {
                 />
               </Grid>
               
-              <Grid item xs={12}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   required
                   fullWidth
@@ -233,6 +234,20 @@ const HospitalRegister = () => {
                   onChange={handleChange}
                   helperText={generatedUsername ? `Suggested: ${generatedUsername}` : 'Will be used for login'}
                   error={Boolean(fieldErrors.username)}
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  required
+                  fullWidth
+                  name="email"
+                  label="Email Address"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  helperText="Will be used for password reset and notifications"
+                  error={Boolean(fieldErrors.email)}
                 />
               </Grid>
               
