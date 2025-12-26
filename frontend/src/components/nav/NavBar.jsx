@@ -12,6 +12,8 @@ import {
 import { FaHistory, FaTint, FaUser } from "react-icons/fa";
 import Sidebar from "./Sidebar";
 import { BsChatDots } from "react-icons/bs";
+import { TbReportMedical } from "react-icons/tb";
+
 
 const NavBar = ({ currentPage }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -108,19 +110,19 @@ const NavBar = ({ currentPage }) => {
   }, []);
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 togray-900">
       <Sidebar
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
       />
 
       <div
-        className={`flex-1 bg-gray-700 transition-all duration-300 ${
+        className={`flex-1 transition-all duration-300 ${
           isSidebarOpen ? "lg:ml-66" : "lg:ml-25"
         }`}
       >
         {/* Navbar */}
-        <nav className="sticky top-0 flex z-50 items-center justify-between px-4 sm:px-6 md:px-8 py-3 pt-4 border-b-2 border-gray-600 bg-gray-800">
+        <nav className="sticky top-0 flex z-50 items-center justify-between px-4 sm:px-6 md:px-8 py-3 border-b border-gray-700 bg-gray-900/80 backdrop-blur-lg shadow-md">
           <img src="/logo.png" alt="Logo" className="w-12 h-auto lg:hidden cursor-pointer" onClick={() => navigate("/")} />
 
 
@@ -134,12 +136,12 @@ const NavBar = ({ currentPage }) => {
               <div className="relative group">
                 <button
                   onClick={() => navigate("/chat-rooms")}
-                  className={`text-2xl cursor-pointer transition-colors duration-200 ${location.pathname.startsWith("/chat-rooms") ? "text-red-400" : "text-white hover:text-red-400"}`}
+                  className={`p-2 rounded-lg hover:bg-gray-700 cursor-pointer transition duration-200 ${location.pathname.startsWith("/chat-rooms") ? "text-red-400" : "text-white hover:text-red-400"}`}
                 >
                   <BsChatDots />
                 </button>
                 {/* Tooltip */}
-                <span className="absolute left-1/2 -translate-x-1/2 mt-8 w-max text-sm text-white bg-gray-500 px-3 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition">
+                <span className="absolute left-1/2 -translate-x-1/2 mt-10 w-max text-sm text-white bg-gray-500 px-3 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition">
                   Chat Rooms
                 </span>
               </div>
@@ -148,7 +150,7 @@ const NavBar = ({ currentPage }) => {
               <div className="relative group">
                 <button
                   onClick={() => navigate("/notifications")}
-                  className={`relative text-2xl cursor-pointer transition-colors duration-200 ${location.pathname === "/notifications" ? "text-red-400" : "text-white hover:text-red-400"}`}
+                  className={`relative p-2 rounded-lg hover:bg-gray-700 cursor-pointer transition duration-200 ${location.pathname === "/notifications" ? "text-red-400" : "text-white hover:text-red-400"}`}
                 >
                   <FiBell />
                   {unreadCount > 0 && (
@@ -158,7 +160,7 @@ const NavBar = ({ currentPage }) => {
                   )}
                 </button>
                 {/* Tooltip */}
-                <span className="absolute left-1/2 -translate-x-1/2 mt-8 w-max text-sm text-white bg-gray-500 px-3 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition">
+                <span className="absolute left-1/2 -translate-x-1/2 mt-10 w-max text-sm text-white bg-gray-500 px-3 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition">
                   Notifications
                 </span>
               </div>
@@ -166,7 +168,7 @@ const NavBar = ({ currentPage }) => {
               {/* Hamburger icon menu */}
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="cursor-pointer hover:text-blue-300 transition duration-300"
+                className="p-2 rounded-lg hover:bg-gray-700 cursor-pointer hover:text-blue-300 transition duration-300"
               >
                 {mobileMenuOpen ? <FiX /> : <FiMenu />}
               </button>
@@ -175,15 +177,15 @@ const NavBar = ({ currentPage }) => {
 
             {/* Mobile Menu List */}
             {mobileMenuOpen && (
-              <div className="absolute right-0 mt-5 bg-gray-800 text-white rounded shadow-lg p-4 w-72">
-                <ul className="space-y-5 text-lg font-medium">
+              <div className="absolute right-0 mt-5 bg-gray-800/95 backdrop-blur-lg  text-white rounded-2xl shadow-lg p-4 w-72 border border-gray-700">
+                <ul className="space-y-4 text-lg font-medium">
                   {navItems.map((item, i) => (
                     <NavLink
                       key={i}
                       to={item.path}
                       onClick={() => setMobileMenuOpen(false)}
-                      className={({ isActive }) =>`block hover:text-red-400 ${
-                        isActive ? "text-red-400 font-bold" : ""
+                      className={({ isActive }) =>`block px-3 py-2 rounded-lg transition ${
+                        isActive ? "bg-red-700 font-bold hover:text-red-200" : "hover:bg-gray-700 hover:text-red-400"
                       }`}
                     >
                       {item.label}
@@ -195,8 +197,8 @@ const NavBar = ({ currentPage }) => {
                     <NavLink
                       to="/blood-request"
                       onClick={() => setMobileMenuOpen(false)}
-                      className={({ isActive })=> `block hover:text-red-400 ${
-                        isActive ? "text-red-400 font-bold" : ""
+                      className={({ isActive })=> `block px-3 py-2 rounded-lg ${
+                        isActive ? "bg-red-700 hover:text-red-200 font-bold" : "hover:bg-gray-700 hover:text-red-400"
                       }`}
                     >
                       Blood Request
@@ -206,8 +208,8 @@ const NavBar = ({ currentPage }) => {
                     <NavLink
                       to="/patients-request"
                       onClick={() => setMobileMenuOpen(false)}
-                      className={({ isActive })=> `block hover:text-red-400 ${
-                        isActive ? "text-red-400 font-bold" : ""
+                      className={({ isActive })=> `block px-3 py-2 rounded-lg ${
+                        isActive ? "bg-red-700 hover:text-red-200 font-bold" : "hover:bg-gray-700 hover:text-red-400"
                       }`}
                     >
                       Patients Request
@@ -217,8 +219,8 @@ const NavBar = ({ currentPage }) => {
                     <NavLink
                       to="/chat-rooms"
                       onClick={() => setMobileMenuOpen(false)}
-                      className={`block hover:text-red-400 ${
-                        (location.pathname.startsWith("/chat-rooms")) ? "text-red-400 font-bold" : ""
+                      className={`block px-3 py-2 rounded-lg ${
+                        (location.pathname.startsWith("/chat-rooms")) ? "bg-red-700 hover:text-red-200 font-bold" : "hover:bg-gray-700 hover:text-red-400"
                       }`}
                     >
                       Chat Rooms
@@ -230,8 +232,8 @@ const NavBar = ({ currentPage }) => {
                     <NavLink
                       to="/register"
                       onClick={() => setMobileMenuOpen(false)}
-                      className={({ isActive })=> `block hover:text-red-400 ${
-                        isActive ? "text-red-400 font-bold" : ""
+                      className={({ isActive })=> `block px-3 py-2 rounded-lg ${
+                        isActive ? "bg-red-700 hover:text-red-200 font-bold" : "hover:bg-gray-700 hover:text-red-400"
                       }`}
                     >
                       Register Now
@@ -243,8 +245,8 @@ const NavBar = ({ currentPage }) => {
                       <NavLink
                         to="/account"
                         onClick={() => setMobileMenuOpen(false)}
-                        className={({ isActive })=> `block hover:text-red-400 ${
-                          isActive ? "text-red-400 font-bold" : ""
+                        className={({ isActive })=> `block px-3 py-2 rounded-lg ${
+                          isActive ? "bg-red-700 hover:text-red-200 font-bold" : "hover:bg-gray-700 hover:text-red-400"
                         }`}
                       >
                         Profile
@@ -252,7 +254,7 @@ const NavBar = ({ currentPage }) => {
 
                       <button
                         onClick={handleLogout}
-                        className="block text-left bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded w-fit"
+                        className="bg-red-700 hover:bg-red-900 text-white px-3 py-2 mt-3 rounded-lg w-full cursor-pointer"
                       >
                         Log Out
                       </button>
@@ -263,7 +265,7 @@ const NavBar = ({ currentPage }) => {
                         setMobileMenuOpen(false);
                         navigate("/login");
                       }}
-                      className="block bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded w-full"
+                      className="w-full bg-sky-700 hover:bg-sky-900 text-white px-3 py-2 mt-3 rounded-lg cursor-pointer"
                     >
                       Log In
                     </button>
@@ -274,14 +276,28 @@ const NavBar = ({ currentPage }) => {
           </div>
 
           {/* For Desktop Menu */}
-          <div className="hidden lg:flex items-center gap-4 text-white ml-auto">
+          <div className="hidden lg:flex items-center gap-6 text-white ml-auto">
 
             {/* Chat Room Button */}
             {isLoggedIn && (
+              <>
+              <div className="relative group">
+              <button
+                onClick={() => navigate("/reports")}
+                className={`text-2xl cursor-pointer transition duration-200 ${location.pathname.startsWith("/reports") ? "text-red-400" : "text-white hover:text-red-400"}`}
+              >
+              <TbReportMedical />
+              </button>
+              {/* Tooltip */}
+              <span className="absolute left-1/2 -translate-x-1/2 mt-8 w-max text-sm text-white bg-gray-500 px-3 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition">
+                Reports
+              </span>
+            </div>
+
             <div className="relative group">
               <button
                 onClick={() => navigate("/chat-rooms")}
-                className={`text-2xl cursor-pointer transition-colors duration-200 ${location.pathname.startsWith("/chat-rooms") ? "text-red-400" : "text-white hover:text-red-400"}`}
+                className={`text-2xl cursor-pointer transition duration-200 ${location.pathname.startsWith("/chat-rooms") ? "text-red-400" : "text-white hover:text-red-400"}`}
               >
                 <BsChatDots />
               </button>
@@ -290,13 +306,14 @@ const NavBar = ({ currentPage }) => {
                 Chat Rooms
               </span>
             </div>
+            </>
             )}
 
             {/* Notification icon */}
             <div className="relative group">
               <button
                 onClick={() => navigate("/notifications")}
-                className={`relative text-2xl cursor-pointer transition-colors duration-200 ${location.pathname === "/notifications" ? "text-red-400" : "text-white hover:text-red-400"}`}
+                className={`relative text-2xl cursor-pointer transition duration-200 ${location.pathname === "/notifications" ? "text-red-400" : "text-white hover:text-red-400"}`}
               >
                 <FiBell />
                 {/* Add a red dot */}
@@ -318,7 +335,7 @@ const NavBar = ({ currentPage }) => {
               <div className="relative group" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown((prev) => !prev)}
-                  className={`flex items-center font-bold px-4 py-1.5 rounded text-2xl hover:text-red-400 cursor-pointer ${
+                  className={`flex items-center gap-1 font-medium px-4 py-1.5 rounded text-2xl hover:text-red-400 transition cursor-pointer ${
                     location.pathname.startsWith("/account")
                       ? "text-red-400"
                       : "text-white hover:text-red-400"
@@ -334,16 +351,16 @@ const NavBar = ({ currentPage }) => {
                 </span>
 
                 {showDropdown && (
-                  <div className="absolute right-0 mt-3 w-65 bg-gray-700 rounded-xl shadow-lg z-50 overflow-hidden text-lg pb-5">
+                  <div className="absolute right-0 mt-3 w-65 bg-gray-800/95 backdrop-blur-lg border border-gray-500 rounded-2xl shadow-lg py-2 z-50 text-lg ">
                     <ul className="flex flex-col divide-y divide-gray-900">
                       {menuItems.map((item, index) => (
                         <li
                           key={index}
                           onClick={() => handleMenuClick(item.label)}
-                          className={`flex items-center gap-3 px-4 py-2 cursor-pointer transition duration-200 ease-in-out ${
+                          className={`flex items-center gap-3 px-4 py-2 cursor-pointer transition duration-200 ease-in-out rounded-lg ${
                             activeMenu === item.label
-                              ? " bg-green-900 text-red-300"
-                              : "hover:bg-gray-800"
+                              ? "bg-green-900 text-red-300"
+                              : "hover:bg-gray-600"
                           }`}
                         >
                           <span className={`text-xl ${item.color}`}>
@@ -357,7 +374,7 @@ const NavBar = ({ currentPage }) => {
 
                       <li
                         onClick={handleLogout}
-                        className="flex items-center gap-3 px-4 py-2 cursor-pointer transition hover:bg-gray-800 text-md font-medium"
+                        className="flex items-center gap-3 px-4 py-2 cursor-pointer transition hover:bg-gray-600 text-md font-medium rounded-lg"
                       >
                         <FiLogOut className="text-xl text-blue-400 font-bold" />{" "}
                         Log Out
@@ -369,7 +386,7 @@ const NavBar = ({ currentPage }) => {
             ) : (
               <button
                 onClick={() => navigate("/login")}
-                className="font-medium bg-red-700 hover:bg-red-800 text-white px-5 py-1.5 rounded text-lg "
+                className="font-medium bg-red-700 hover:bg-red-800 text-white px-5 py-1.5 rounded-lg text-lg "
               >
                 Log In
               </button>

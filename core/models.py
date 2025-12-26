@@ -49,6 +49,13 @@ class User(AbstractUser):
     location_long = models.FloatField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
+    profile_picture = models.ImageField(
+        upload_to='profile_pictures/',
+        blank=True,
+        null=True,
+        default='profile_pictures/default.png'
+    )
+    
     objects = CustomUserManager()
     
     def __str__(self):

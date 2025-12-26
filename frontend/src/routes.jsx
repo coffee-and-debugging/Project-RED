@@ -26,8 +26,12 @@ import HosSidebar from "./pages/HospitalDashboard/HosSidebar";
 import HospiNavBar from "./pages/HospitalDashboard/HospiNavBar";
 import BloodInventory from "./pages/HospitalDashboard/BloodInventory";
 import Settings from "./pages/HospitalDashboard/Settings";
-import Reports from "./pages/HospitalDashboard/Reports";
+// import Reports from "./pages/HospitalDashboard/Reports";
 import HospitalLogin from "./components/Auth/HospitalLogin";
+import ProtectedRoute from "./ProtectedRoute";
+import ResetHosPass from "./components/Auth/ResetHosPass";
+import ResetUserPass from "./components/Auth/ResetUserPass";
+import Reports from "./components/Reports/Reports";
 
 const AppRoutes = () => {
   return (
@@ -35,6 +39,7 @@ const AppRoutes = () => {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/reset-password/:uid/:token" element={<ResetUserPass />} />
         <Route element={<NavBar />}>
           <Route path="/" element={<Home />} />
           <Route path="/about" element={<About />} />
@@ -50,19 +55,26 @@ const AppRoutes = () => {
           <Route path="/chat-rooms" element={<ChatRoomsList />} />
           <Route path="/chat-rooms/:id" element={<ChatRoom />} />
           <Route path="/patients-request" element={<DonateBlood />} />
+          <Route path="/reports" element={<Reports />} />
         </Route>
 
         {/* Hospital Routes */}
         <Route path="/hospital_register" element={<HospitalRegister />} />
         <Route path="/hospital-login" element={<HospitalLogin />} />
 
+
         <Route element={<HospiNavBar />}>
-          <Route path="/donor-dashboard" element={<DonarDashboard />} />
+          <Route path="/hospital-reset-password/:uid/:token" element={<ResetHosPass />} />
+          {/* <Route path="/donor-dashboard" element={<ProtectedRoute>
+            <DonarDashboard />
+            </ProtectedRoute>} /> */}
           {/* <Route path="/blood-inventory" element={<BloodInventory />} /> */}
-          <Route path="/patient-dashboard" element={<PatientDashboard />} />
+          {/* <Route path="/patient-dashboard" element={<PatientDashboard />} />
           <Route path="/users-reports" element={<Reports />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/hospital-dashboard" element={<HospitalDashboard />} />
+          <Route path="/settings" element={<Settings />} /> */}
+          <Route path="/hospital-dashboard" element={<ProtectedRoute>
+            <HospitalDashboard />
+          </ProtectedRoute>} />
         </Route>
 
         {/* Admin Routes */}

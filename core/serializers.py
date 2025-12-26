@@ -5,6 +5,7 @@ from .models import User, DonorHospitalAssignment, Hospital, BloodRequest, Donat
 import requests
 from django.conf import settings
 import json
+import base64
 from math import radians, sin, cos, sqrt, atan2
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -73,12 +74,60 @@ class UserLoginSerializer(serializers.Serializer):
         return data
 
 class UserSerializer(serializers.ModelSerializer):
+    profile_picture_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 
-                 'blood_group', 'allergies', 'age', 'gender', 'address', 
-                 'phone_number', 'location_lat', 'location_long', 'is_donor', 'is_recipient')
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 
+            'blood_group', 'age', 'gender', 'address', 'phone_number',
+            'is_donor', 'is_recipient', 'location_lat', 'location_long',
+            'allergies', 'profile_picture', 'profile_picture_url',
+            'created_at'
+        ]
+        read_only_fields = ['profile_picture_url']
+    
+    def get_profile_picture_url(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                # This generates absolute URL like: http://127.0.0.1:8000/media/profile_pictures/filename.jpg
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+     
+    
+    
+class UserUpdateSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.ImageField(required=False, allow_null=True)
+    profile_picture_url = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = User
+        fields = [
+            'first_name', 'last_name', 'email', 'blood_group', 'age',
+            'gender', 'address', 'phone_number', 'allergies', 'profile_picture', 'profile_picture_url'
+        ]
+    
+    def get_profile_picture_url(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+    
 
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True, min_length=8)
+    confirm_password = serializers.CharField(required=True)
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['confirm_password']:
+            raise serializers.ValidationError({"confirm_password": "Password fields didn't match."})
+        return attrs
+    
 class HospitalSerializer(serializers.ModelSerializer):
     class Meta:
         model = Hospital

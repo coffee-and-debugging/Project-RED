@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
-import { FiEye, FiEyeOff } from "react-icons/fi";
+import { FiAlertCircle, FiEye, FiEyeOff } from "react-icons/fi";
 import { ToastContainer, toast } from "react-toastify";
-import Forgot from "./Forgot";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -111,6 +110,94 @@ export default function Login() {
     }
   };
 
+  // Forgot Password Modal
+  const ForgotModal = () => {
+    const [email, setEmail] = useState("");
+    const [loading, setLoading] = useState(false);
+
+    const handleSendRequest = async (e) => {
+      e.preventDefault();
+      if (!email.trim()) {
+        toast.error("Please enter your email.");
+        return;
+      }
+
+      setLoading(true);
+      const toastId = toast.loading("Sending reset Link...");
+      try {
+        await axios.post("http://127.0.0.1:8000/api/password-reset/request/", {
+          email,
+        });
+        toast.update(toastId, {
+          render: "Password reset link sent to your email!",
+          type: "success",
+          isLoading: false,
+          autoClose: 3000,
+        });
+        setTimeout(() => setShowForgotModal(false), 2000);
+      } catch (err) {
+        toast.update(toastId, {
+          render: "Error sending reset link. Try again.",
+          type: "error",
+          isLoading: false,
+          autoClose: 3000,
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (!showForgotModal) return null;
+    return (
+      <div className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 px-4">
+        <div className="bg-white w-full max-w-md p-8 rounded-2xl shadow-lg relative">
+          <button
+            className="absolute top-1 right-4 text-gray-600 text-3xl"
+            onClick={() => setShowForgotModal(false)}
+          >
+            &times;
+          </button>
+          <div className="flex justify-center mb-4">
+            <FiAlertCircle size={60} className="text-blue-500" />
+          </div>
+          <h2 className="text-2xl font-bold text-center mb-2">
+            Forgot Password
+          </h2>
+          <p className="text-sm text-center mb-6 text-gray-600">
+            Enter your registered email to receive a reset link.
+          </p>
+          <form onSubmit={handleSendRequest} className="space-y-4">
+            <input
+              type="email"
+              placeholder="Email Address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-cyan-400"
+              required
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              className={`w-full py-2 font-semibold text-white rounded-lg transition ${
+                loading
+                  ? "bg-cyan-400 cursor-not-allowed"
+                  : "bg-cyan-600 hover:bg-cyan-700"
+              }`}
+              disabled={loading}
+            >
+              {loading ? "Sending..." : "Send Reset Link"}
+            </button>
+          </form>
+          <button
+            className="flex items-center justify-center w-full text-sm text-gray-600 mt-4 underline font-semibold cursor-pointer hover:text-gray-800"
+            onClick={() => setShowForgotModal(false)}
+          >
+            Back to Login
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-200 via-white to-cyan-200 px-4">
       <div className="w-full max-w-md p-8 relative shadow-xl rounded-2xl bg-white">
@@ -122,7 +209,9 @@ export default function Login() {
         </div>
 
         {/* Title */}
-        <h2 className="text-3xl font-extrabold text-center text-red-700 mb-2">Project R.E.D</h2>
+        <h2 className="text-3xl font-extrabold text-center text-red-700 mb-2">
+          Project R.E.D
+        </h2>
         <p className="text-gray-500 text-center mb-6">
           Sign in to continue to your account
         </p>
@@ -190,21 +279,15 @@ export default function Login() {
               />
               Remember me
             </label>
-              <button
-                type="button"
-                onClick={() => setShowForgotModal(true)}
-                className="text-blue-600 cursor-pointer underline"
-              >
-                Forgot Password?
-              </button>
-            
+            <button
+              type="button"
+              onClick={() => setShowForgotModal(true)}
+              className="text-blue-600 cursor-pointer underline"
+            >
+              Forgot Password?
+            </button>
           </div>
 
-          {/* Forgot Modal */}
-          <Forgot
-            showForgotModal={showForgotModal}
-            setShowForgotModal={setShowForgotModal}
-          />
           <button
             type="submit"
             className="w-full bg-red-600 text-white font-semibold py-2 rounded-lg hover:bg-red-700 transition cursor-pointer flex items-center justify-center gap-2"
@@ -225,6 +308,7 @@ export default function Login() {
 
           <ToastContainer theme="light" />
         </form>
+        {showForgotModal && <ForgotModal />}
       </div>
     </div>
   );

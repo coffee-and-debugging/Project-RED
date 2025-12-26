@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { notificationService } from '../../services/notifications';
 import {
   Container,
   Typography,
@@ -47,19 +48,26 @@ const Dashboard = () => {
   const [selectedPrediction, setSelectedPrediction] = useState(null);
   const [predictionDialogOpen, setPredictionDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
     fetchHealthPredictions();
+    fetchNotifications();
+
+    // Poll for new notifications every 30 seconds
+    const interval = setInterval(() => {
+      fetchNotifications();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const fetchHealthPredictions = async () => {
     try {
       setLoading(true);
-      // Fetch donations with blood tests
       const response = await api.get("/donations/?expand=blood_test");
       const donations = response.data.results || response.data;
 
-      // Extract health predictions from completed blood tests
       const predictions = donations
         .filter(
           (donation) =>
@@ -73,7 +81,7 @@ const Dashboard = () => {
           prediction: donation.blood_test.health_risk_prediction,
           summary: donation.blood_test.disease_prediction,
           confidence: donation.blood_test.prediction_confidence,
-          bloodTestData: donation.blood_test, // Include full blood test data
+          bloodTestData: donation.blood_test,
           lifeSaved: donation.blood_test.life_saved,
         }));
 
@@ -84,6 +92,16 @@ const Dashboard = () => {
       setLoading(false);
     }
   };
+
+  const fetchNotifications = async () => {
+    try {
+      const newNotifications = await notificationService.getNotifications();
+      setNotifications(newNotifications);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+    }
+  };
+
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
   };
@@ -122,7 +140,8 @@ const Dashboard = () => {
                 <strong>Age:</strong> {currentUser?.age || "Not specified"}
               </Typography>
               <Typography variant="body2">
-                <strong>Status:</strong> {currentUser?.is_donor ? "Donor" : ""}{" "}
+                <strong>Status:</strong>{" "}
+                {currentUser?.is_donor ? "Donor" : ""}{" "}
                 {currentUser?.is_recipient ? "Recipient" : ""}
               </Typography>
             </CardContent>
@@ -139,13 +158,16 @@ const Dashboard = () => {
           textColor="primary"
           centered
         >
-          <Tab icon={<NotificationsIcon />} label="Notifications" />
+          <Tab
+            icon={<NotificationsIcon />}
+            label={`Notifications (${notifications.length})`}
+          />
           <Tab icon={<HistoryIcon />} label="Donation History" />
           <Tab icon={<HealthIcon />} label="Health Predictions" />
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
-          <Notifications />
+          <Notifications notifications={notifications} />
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
@@ -238,7 +260,6 @@ const Dashboard = () => {
         <DialogContent>
           {selectedPrediction && (
             <Box sx={{ mt: 2 }}>
-              {/* Blood Test Results */}
               <Typography variant="h6" gutterBottom>
                 Blood Test Results:
               </Typography>
@@ -277,8 +298,7 @@ const Dashboard = () => {
                 <Grid item xs={6}>
                   <Typography variant="body2">
                     <strong>Platelet Count:</strong>{" "}
-                    {selectedPrediction.bloodTestData.platelet_count}{" "}
-                    platelets/mcL
+                    {selectedPrediction.bloodTestData.platelet_count} platelets/mcL
                   </Typography>
                 </Grid>
                 {selectedPrediction.lifeSaved && (
@@ -291,7 +311,6 @@ const Dashboard = () => {
                 )}
               </Grid>
 
-              {/* Health Prediction */}
               <Typography variant="h6" gutterBottom>
                 Health Analysis:
               </Typography>
@@ -310,8 +329,7 @@ const Dashboard = () => {
 
               {selectedPrediction.confidence && (
                 <Typography variant="body2" color="textSecondary">
-                  <strong>Confidence Level:</strong>{" "}
-                  {selectedPrediction.confidence}%
+                  <strong>Confidence Level:</strong> {selectedPrediction.confidence}%
                 </Typography>
               )}
             </Box>
@@ -321,6 +339,7 @@ const Dashboard = () => {
           <Button onClick={() => setPredictionDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
       {/* Quick Actions Section */}
       <Grid container spacing={2} sx={{ mt: 2 }}>
         <Grid item xs={12} sm={6} md={3}>

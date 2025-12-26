@@ -15,4 +15,14 @@ export const notificationService = {
     const response = await api.post('/notifications/mark_all_read/');
     return response;
   },
+
+  subscribeToNotifications: (callback) => {
+    // This would set up WebSocket subscription for real-time notifications
+    // For now, we'll use polling or implement later
+    console.log('Subscribing to notifications...');
+  },
+  
+  unsubscribeFromNotifications: () => {
+    console.log('Unsubscribing from notifications...');
+  },
 };

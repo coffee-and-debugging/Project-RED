@@ -8,7 +8,8 @@ import {
   Menu,
   MenuItem,
   Box,
-  Badge
+  Badge,
+  Avatar
 } from '@mui/material';
 import AccountCircle from '@mui/icons-material/AccountCircle';
 import BloodtypeIcon from '@mui/icons-material/Bloodtype';
@@ -18,18 +19,30 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { notificationService } from '../../services/notifications';
+import api from '../../services/api';
 
 const Navbar = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [userProfile, setUserProfile] = useState(null);
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (currentUser) {
+      fetchUserProfile();
       fetchUnreadNotifications();
     }
   }, [currentUser]);
+
+  const fetchUserProfile = async () => {
+    try {
+      const response = await api.get('/users/profile/');
+      setUserProfile(response.data);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
 
   const fetchUnreadNotifications = async () => {
     try {
@@ -56,6 +69,22 @@ const Navbar = () => {
     navigate('/login');
   };
 
+  // Get profile picture URL or use default
+  const getProfilePicture = () => {
+    if (userProfile?.profile_picture_url) {
+      return userProfile.profile_picture_url;
+    }
+    return null;
+  };
+
+  // Get user's display name
+  const getDisplayName = () => {
+    if (userProfile?.first_name && userProfile?.last_name) {
+      return `${userProfile.first_name} ${userProfile.last_name}`;
+    }
+    return currentUser?.username || 'User';
+  };
+
   return (
     <AppBar position="static">
       <Toolbar>
@@ -65,7 +94,7 @@ const Navbar = () => {
         </Typography>
 
         {currentUser ? (
-          <Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Button color="inherit" onClick={() => navigate('/dashboard')}>
               Dashboard
             </Button>
@@ -114,8 +143,17 @@ const Navbar = () => {
               aria-haspopup="true"
               onClick={handleMenu}
               color="inherit"
+              sx={{ ml: 1 }}
             >
-              <AccountCircle />
+              {getProfilePicture() ? (
+                <Avatar 
+                  src={getProfilePicture()} 
+                  sx={{ width: 32, height: 32 }}
+                  alt={getDisplayName()}
+                />
+              ) : (
+                <AccountCircle />
+              )}
             </IconButton>
             <Menu
               id="menu-appbar"
@@ -133,7 +171,26 @@ const Navbar = () => {
               onClose={handleClose}
             >
               <MenuItem onClick={() => { handleClose(); navigate('/profile'); }}>
-                Profile
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {getProfilePicture() ? (
+                    <Avatar 
+                      src={getProfilePicture()} 
+                      sx={{ width: 24, height: 24 }}
+                      alt={getDisplayName()}
+                    />
+                  ) : (
+                    <AccountCircle sx={{ fontSize: 24 }} />
+                  )}
+                  <Box>
+                    <Typography variant="subtitle2">{getDisplayName()}</Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      {userProfile?.blood_group || 'No blood group'}
+                    </Typography>
+                  </Box>
+                </Box>
+              </MenuItem>
+              <MenuItem onClick={() => { handleClose(); navigate('/profile'); }}>
+                Edit Profile
               </MenuItem>
               <MenuItem onClick={handleLogout}>Logout</MenuItem>
             </Menu>

@@ -11,46 +11,37 @@ const API_BASE_URL = "http://127.0.0.1:8000/api";
 
 const DonateBlood = () => {
   const [requests, setRequests] = useState([]);
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [userLocation, setUserLocation] = useState(null);
   const [showLocationModal, setShowLocationModal] = useState(false);
-  const [foundMsg, setFoundMsg] = useState("");
   const [hospitalMap, setHospitalMap] = useState({});
 
   const currentUser = JSON.parse(localStorage.getItem("user"));
   const token = localStorage.getItem("token");
 
-  // Fetch available requests and hospitsls on mount
   useEffect(() => {
-    fetchRequests();
-    fetchHospitals();
+    if (token && currentUser?.user_id) {
+      fetchRequests();
+      fetchHospitals();
+      const interval = setInterval(fetchHospitals, 5000);
+      return () => clearInterval(interval);
+    } else {
+      setError("User not logged in.");
+      setLoading(false);
+    }
   }, []);
 
   const fetchRequests = async () => {
     try {
       setLoading(true);
-      setError("");
       const res = await axios.get(`${API_BASE_URL}/available-blood-requests/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
-      let data = res.data || [];
-      //   Filter out own request
-      if (currentUser?.user_id) {
-        data = data.filter((req) => req.patient !== currentUser.user_id);
-      }
+      let data = res.data.results || res.data || [];
+      data = data.filter((req) => req.patient !== currentUser.user_id);
       setRequests(data);
-
-      //   also update "found requests" message
-      setFoundMsg(
-        data.length
-          ? `Found ${data.length} blood request${
-              data.length > 1 ? "s" : ""
-            } matching your blood type.`
-          : "No matching blood request found nearby."
-      );
     } catch (err) {
       setError("Failed to load blood requests");
     } finally {
@@ -58,25 +49,21 @@ const DonateBlood = () => {
     }
   };
 
-  // Fetch hospital list
   const fetchHospitals = async () => {
     try {
       const res = await axios.get(`${API_BASE_URL}/hospitals/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const map = {};
-      (res.data.results || res.data).forEach((h) => {
-        map[h.id] = h;
-      });
+      (res.data.results || res.data).forEach((h) => (map[h.id] = h));
       setHospitalMap(map);
     } catch (err) {
-      console.error("Error fetching hospitsls: ", err);
+      console.error(err);
     }
   };
 
   const updateLocation = () => {
     setShowLocationModal(true);
-
     if (!navigator.geolocation) {
       setError("Geolocation not supported");
       setShowLocationModal(false);
@@ -86,26 +73,13 @@ const DonateBlood = () => {
       async (pos) => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setUserLocation(loc);
-
         try {
-          if (!token || !currentUser?.user_id) {
-            setError("No token found. Please log in again.");
-            setShowLocationModal(false);
-            return;
-          }
-
-          const userId = currentUser.user_id;
           await axios.patch(
-            `${API_BASE_URL}/users/${userId}/`,
-            {
-              location_lat: loc.lat,
-              location_long: loc.lng,
-            },
-            {
-              headers: { Authorization: `Bearer ${token}` },
-            }
+            `${API_BASE_URL}/users/${currentUser.user_id}/`,
+            { location_lat: loc.lat, location_long: loc.lng },
+            { headers: { Authorization: `Bearer ${token}` } }
           );
-          setSuccess("Location updated successfully!");
+          setSuccess("Location updated!");
           fetchRequests();
         } catch {
           setError("Failed to update location");
@@ -114,15 +88,13 @@ const DonateBlood = () => {
         }
       },
       (err) => {
-        setError("Location error: " + err.message), setShowLocationModal(false);
+        setError("Location error: " + err.message);
+        setShowLocationModal(false);
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
 
-  
-
-  // Haversine formula
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const toRad = (x) => (x * Math.PI) / 180;
     const R = 6371;
@@ -159,36 +131,23 @@ const DonateBlood = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       const rooms = res.data.results || res.data || [];
-      const room = Array.isArray(rooms)
-        ? rooms.find((r) => r.donation === donationId)
-        : null;
+      const room = rooms.find((r) => r.donation === donationId);
       return room ? room.id : null;
-    } catch (err) {
-      console.log("Error finding chat room:", err);
+    } catch {
       return null;
     }
   };
 
-  // Find or create chat room
   const createChatRoomIfMissing = async (donationId) => {
-    try {
-      const existingRoomId = await findChatRoomForDonation(donationId);
-      if (existingRoomId) return existingRoomId;
-
-      // Create new chat room
-      const newRoom = await createChatRoomForDonation(donationId);
-      return newRoom.id;
-    } catch (err) {
-      console.error("Error creating chat room:", err);
-      throw err;
-    }
+    const existingRoomId = await findChatRoomForDonation(donationId);
+    if (existingRoomId) return existingRoomId;
+    const newRoom = await createChatRoomForDonation(donationId);
+    return newRoom.id;
   };
 
-  // Handle Accept
   const handleAccept = async (req) => {
     setError("");
     setSuccess("");
-
     if (!userLocation) {
       setError("Please update your location first");
       return;
@@ -202,63 +161,63 @@ const DonateBlood = () => {
         req.location_long || req.lng
       );
       if (distance > 20) {
-        setError(
-          `You are ${distance.toFixed(
-            2
-          )} km away from this blood request (more than 20 km)`
-        );
+        setError(`You are ${distance.toFixed(2)} km away (max 20 km)`);
         return;
       }
 
-      //  check if donation already exists
-      let donation;
       const donationRes = await axios.get(`${API_BASE_URL}/donations/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const donations = donationRes.data.results || donationRes.data || [];
-      donation = donations.find(
+      let donation = donations.find(
         (d) => d.blood_request === req.id && d.donor === currentUser.user_id
       );
 
-      // Create new donation if not exists
-      if (!donation) {
-        const newDonation = await createDonation(req.id);
-        
-        donation = newDonation.data;
-      }
-
-      // Already accepted or processed
-      if (donation.status !== "pending") {
-        const roomId = await createChatRoomIfMissing(donation.id);
-        setSuccess("Donation already accepted. Redirecting to chat....");
-        setTimeout(
-          () => (window.location.href = `/chat-rooms/${roomId}`),
-          2000
-        );
+      if (donation && donation.status !== "pending") {
+        setError("Donation has already been accepted.");
         return;
       }
+      if (!donation) donation = await createDonation(req.id);
 
-      // Accept donation
       await axios.post(
         `${API_BASE_URL}/donations/${donation.id}/accept/`,
-        { donor_lat: userLocation.lat, donor_lng: userLocation.lng },
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setSuccess("Donation accepted successfully!");
+
+      // Assign donor to hospital
+      await axios.post(
+        `${API_BASE_URL}/donor-hospital-assignment/`,
+        {
+          donor: currentUser.user_id,
+          hospital: req.hospital,
+          blood_request: req.id,
+          donation: donation.id,
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Then create/find chat room
+      await axios.patch(
+        `${API_BASE_URL}/blood-requests/${req.id}`,
+        { status: "donating" },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
       const roomId = await createChatRoomIfMissing(donation.id);
-      setSuccess("Donation accepted successfully! Redirecting to chat...");
+      setSuccess("Donation accepted! Redirecting to chat...");
       setTimeout(() => (window.location.href = `/chat-rooms/${roomId}`), 2000);
     } catch (err) {
-      console.error("Error accepting donation:", err.response || err);
-      setError(
-        "Failed to accept donation: " +
-          (err.response?.data?.detail || err.message || "Unknown error")
-      );
-    } finally {
+      console.error(err);
+      setError("Failed to accept donation.");
     }
   };
 
+  const handleReject = (req) => {
+    setRequests((prev) => prev.filter((r) => r.id !== req.id));
+    setSuccess(`You rejected the request for ${req.blood_group}.`);
+    setTimeout(() => setSuccess(""), 3000);
+  };
 
   if (loading) return <p>Loading blood requests...</p>;
 
@@ -284,7 +243,6 @@ const DonateBlood = () => {
         </p>
       )}
 
-      {/* Alerts */}
       {error && (
         <div className="bg-red-100 w-1/3 border border-red-300 text-black px-4 py-2 rounded-lg mb-3">
           {error}
@@ -296,11 +254,6 @@ const DonateBlood = () => {
         </div>
       )}
 
-      {foundMsg && (
-        <p className="text-red-300 text-lg font-medium mb-4">{foundMsg}</p>
-      )}
-
-      {/* Requests */}
       {requests.length === 0 ? (
         <p className="text-gray-400">No available blood requests nearby.</p>
       ) : (
@@ -310,7 +263,6 @@ const DonateBlood = () => {
               key={req.id}
               className="relative bg-white shadow-lg rounded-2xl border border-gray-200 p-6 hover:shadow-xl transition"
             >
-              {/* Urgency Badge */}
               <span
                 className={`absolute top-4 right-4 px-4 py-1 rounded-full text-white text-sm font-semibold ${
                   req.urgency === "High"
@@ -327,37 +279,24 @@ const DonateBlood = () => {
                 Blood Request for {req.blood_group}
               </h3>
               <p className="font-semibold text-gray-500 mb-2">
-                {req.units_required} units required • {req.urgency} urgency
+                {req.units_required} units • {req.urgency} urgency
               </p>
-              <p className="font-semibold mb-1">
+              <p className="font-semibold">
                 Reason: <span className="font-normal">{req.reason}</span>
               </p>
-              <p className="font-semibold mb-1">
+              <p className="font-semibold">
                 Patient: <span className="font-normal">{req.patient_name}</span>
               </p>
-              <p className="font-semibold mb-1">
+              <p className="font-semibold">
                 Distance: <span className="font-normal">{req.distance} km</span>
               </p>
               <p className="font-semibold">
                 Requested:{" "}
                 <span className="font-normal">
-                  {new Date(req.created_at).toLocaleString()}
+                  {hospitalMap[req.hospital]?.name || "Unknown"}
                 </span>
               </p>
-              <p className="font-semibold mb-1">
-                Hospital:{" "}
-                <span className="font-normal">
-                  {hospitalMap[req.hospital]?.name || "Unknown Hospital"}
-                </span>
-              </p>
-              <p className="font-semibold mb-1">
-                Address:{" "}
-                <span className="font-normal">
-                  {hospitalMap[req.hospital]?.address || "Not provided"}
-                </span>
-              </p>
-
-              <div className="flex gap-4 mt-3">
+              <div className="flex gap-4">
                 <button
                   onClick={() => handleAccept(req)}
                   className="mt-4 font-semibold tracking-wide bg-green-700 text-white py-2 px-4 rounded-lg hover:bg-green-800 transition cursor-pointer"
@@ -376,7 +315,6 @@ const DonateBlood = () => {
         </div>
       )}
 
-      {/* Modal for Location Permission */}
       {showLocationModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg w-[380px] text-center">
@@ -384,7 +322,7 @@ const DonateBlood = () => {
               Getting Location...
             </h3>
             <p className="text-gray-600 mb-4">
-              Please wait while get your location coordinates.
+              Please wait while we get your coordinates.
             </p>
             <div className="flex justify-center mt-4">
               <div className="w-10 h-10 border-4 border-gray-600 border-t-transparent rounded-full animate-spin"></div>

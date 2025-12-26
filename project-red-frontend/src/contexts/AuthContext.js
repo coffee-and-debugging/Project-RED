@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { authService } from '../services/auth';
+import api from '../services/api';
 
 const AuthContext = createContext();
 
@@ -15,9 +16,28 @@ export const AuthProvider = ({ children }) => {
     const user = authService.getCurrentUser();
     if (user) {
       setCurrentUser(user);
+      // Refresh user data to get latest profile picture
+      refreshUser();
     }
     setLoading(false);
   }, []);
+
+  const refreshUser = async () => {
+    try {
+      const response = await api.get('/users/profile/');
+      const updatedUser = response.data;
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setCurrentUser(updatedUser);
+      return updatedUser;
+    } catch (error) {
+      console.error('Error refreshing user:', error);
+      // If refresh fails, use the stored user data
+      const storedUser = authService.getCurrentUser();
+      if (storedUser) {
+        setCurrentUser(storedUser);
+      }
+    }
+  };
 
   const login = async (username, password) => {
     try {
@@ -62,7 +82,8 @@ export const AuthProvider = ({ children }) => {
     currentUser,
     login,
     register,
-    logout
+    logout,
+    refreshUser
   };
 
   return (

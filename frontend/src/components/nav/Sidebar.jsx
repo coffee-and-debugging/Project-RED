@@ -6,6 +6,7 @@ import { MdBloodtype } from "react-icons/md";
 import { CiMedicalCross } from "react-icons/ci";
 import { FaRegCalendarAlt, FaTint, FaUserPlus, FaUsers } from "react-icons/fa";
 import { BsChatDots } from "react-icons/bs";
+import { TbReportMedical } from "react-icons/tb";
 
 const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
   const [dateTime, setDateTime] = useState("");
@@ -42,19 +43,26 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
     { label: "About Us", icon: <FiInfo />, to: "/about" },
     { label: "Why Donate Blood", icon: <FaTint />, to: "/why-donate" },
     { label: "Blood Compatibility", icon: <MdBloodtype />, to: "/blood-compatibility" },
-    // { label: "Chat Room", icon: <BsChatDots />, to: "/chat-rooms"}
+  ];
+
+  // Logged-in Menu
+  const loggedNav = [
+    { label: "Blood Request", icon: <CiMedicalCross />, to: "/blood-request" },
+    { label: "Patients Request", icon: <FaUsers />, to: "/patients-request" },
+    { label: "Chat Room", icon: <BsChatDots />, to: "/chat-rooms" },
+    { label: "Reports", icon: <TbReportMedical />, to: "/reports" },
   ];
 
   return (
     <div
-      className={`hidden lg:flex fixed top-0 left-0 bg-gray-800 h-screen shadow-lg transition-all duration-300 z-50 ${
+      className={`hidden lg:flex fixed top-0 left-0 h-screen bg-gradient-to-b from-gray-900 to-gray-800 border-r border-gray-700 shadow-2xl transition-all duration-300 ${
         isSidebarOpen ? "w-66" : "w-25"
       } overflow-hidden flex-col`}
     >
 
       {/* Logo */}
-      <div className="relative">
-        <div className="flex items-center justify-center gap-3 p-4 pb-6">
+      <div className={`relative flex items-center justify-between p-4 pb-5 border-b border-gray-700`}>
+        <div className="flex items-center gap-3">
           <img
             src="/logo.png"
             alt="LOGO"
@@ -63,27 +71,11 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
             }`} onClick={() => navigate("/")}
           />
           {isSidebarOpen && (
-            <span className="text-white font-bold text-lg whitespace-nowrap">
+            <span className="text-white font-bold text-lg tracking-wide">
               Project R.E.D
             </span>
           )}
         </div>
-        <div
-          className="h-0.5 bg-gray-600 w-full absolute bottom-1"
-          style={{ height: "2px" }}
-        ></div>
-      </div>
-
-      {/* Date & Toggle Button */}
-      <div className="flex items-center justify-between px-4 pb-2 pt-4">
-        {isSidebarOpen ? (
-          <div className="flex items-center gap-2 text-white font-medium text-sm">
-            <FaRegCalendarAlt className="text-lg" />
-            <span>{dateTime}</span>
-          </div>
-        ) : (
-          <div />
-        )}
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="text-2xl text-white cursor-pointer hover:text-blue-300 transition duration-300"
@@ -92,25 +84,31 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
         </button>
       </div>
 
+      {/* Date & Toggle Button */}
+      
+        {isSidebarOpen && (
+          <div className="flex items-center gap-2 text-gray-400 font-medium text-sm px-5 py-3 border-b border-gray-700">
+            <FaRegCalendarAlt className="text-lg"/>
+            <span>{dateTime}</span>
+          </div>
+        
+        )}
+
       {/* Navigation Links Menus */}
-      <div className="flex flex-col items-start p-4 space-y-4 pt-4">
+      <div className="flex flex-col mt-4 px-3 space-y-3 overflow-y-auto">
         {navLinks.map((item, i) => (
           <Link
             to={item.to}
             key={i}
-            className={`group flex items-center p-2 rounded-md hover:bg-gray-700 text-white w-full transition-all duration-200 hover:text-red-400 ${
+            className={`group flex items-center p-3 rounded-xl transition-all duration-300 hover:text-red-200 ${
               currentPath === item.to
-                ? "bg-red-800"
-                : "hover:bg-gray-700 "
-            } font-medium text-lg ${
+                ? "bg-gradient-to-r from-red-700 to-red-600 text-white shadow-lg"
+                : "text-gray-300 hover:text-red-300 hover:bg-gray-700/60 "
+            } font-medium ${
               isSidebarOpen ? "gap-4" : "justify-center"
             }`}
           >
-            <span
-              className={` ${
-                isSidebarOpen ? "text-xl" : "text-2xl"
-              } flex items-center justify-center`}
-            >
+            <span className={` ${ isSidebarOpen ? "text-xl" : "text-2xl" }`}>
               {item.icon}
             </span>
             {isSidebarOpen && (
@@ -123,49 +121,55 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
           </Link>
         ))}
 
-        {/* Conditional Auth Links */}
-        {/* Blood Request Menu */}
+        {/* Logged-in menus */}
         {isLoggedIn && (
+         <>
+          {loggedNav.map((item, itm) => (
           <Link
-            to="/blood-request"
+            to={item.to}
+            key={itm}
             onClick={() => setMobileMenuOpen(false)}
-            className={`group flex items-center p-2 rounded-md hover:bg-gray-700 text-white w-full transition-all duration-200 hover:text-red-400 font-medium text-lg ${
-              currentPath === "/blood-request"
-                ? "bg-red-800 text-white"
-                : "text-white hover:bg-gray-700"
-            } ${isSidebarOpen ? "gap-4" : "justify-center"}`}
+            className={`group flex items-center p-3 rounded-xl transition-all duration-300 hover:text-red-200 ${
+              currentPath === item.to
+                ? "bg-gradient-to-r from-red-700 to-red-600 text-white shadow-lg"
+                : "text-gray-300 hover:text-red-300 hover:bg-gray-700/60 "
+            } font-medium ${
+              isSidebarOpen ? "gap-4" : "justify-center"
+            }`}
           >
             <span
               className={`${
                 isSidebarOpen ? "text-xl" : "text-2xl"
-              } flex items-center justify-center`}
+              }`}
             >
-              <CiMedicalCross />
+              {item.icon}
             </span>
             {isSidebarOpen && (
               <span
                 className={`transition-all duration-300 transform group-hover:translate-x-3`}
               >
-                Blood Request
+                {item.label}
               </span>
             )}
           </Link>
+          ))}
+          </>
         )}
 
         {/* Register Menu */}
         {!isLoggedIn && (
           <Link
             to="/register"
-            className={`group flex items-center p-2 rounded-md hover:bg-gray-700 text-white w-full transition-all duration-200 hover:text-red-400 font-medium text-lg ${
+            className={`group flex items-center p-3 rounded-xl transition-all duration-300 hover:text-red-200 font-medium ${
               currentPath === "/register" || currentPath === "/hospital_register"
-                ? "bg-red-800 text-white"
-                : "text-white hover:bg-gray-700"
+                ? "bg-gradient-to-r from-red-700 to-red-600 text-white shadow-lg"
+                : "text-gray-300 hover:text-red-300 hover:bg-gray-700/60"
             } ${isSidebarOpen ? "gap-4" : "justify-center"}`}
           >
             <span
               className={`${
                 isSidebarOpen ? "text-xl" : "text-2xl"
-              } flex items-center justify-center`}
+              } `}
             >
               <FaUserPlus />
             </span>
@@ -174,61 +178,6 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
                 className={`transition-all duration-300 transform group-hover:translate-x-3`}
               >
                 Register Now
-              </span>
-            )}
-          </Link>
-        )}
-
-        {/* Patients Requests Menu */}
-        {isLoggedIn && (
-          <Link
-            to="/patients-request"
-            className={`group flex items-center p-2 rounded-md hover:bg-gray-700 text-white w-full transition-all duration-200 hover:text-red-400 font-medium text-lg ${
-              currentPath === "/patients-request"
-                ? "bg-red-800 text-white"
-                : "text-white hover:bg-gray-700"
-            } ${isSidebarOpen ? "gap-4" : "justify-center"}`}
-          >
-            <span
-              className={`${
-                isSidebarOpen ? "text-xl" : "text-2xl"
-              } flex items-center justify-center`}
-            >
-              <FaUsers />
-            </span>
-            {isSidebarOpen && (
-              <span
-                className={`transition-all duration-300 transform group-hover:translate-x-3`}
-              >
-                Patients Request
-              </span>
-            )}
-          </Link>
-        )}
-
-
-        {/* Chat room Menu */}
-        {isLoggedIn && (
-          <Link
-            to="/chat-rooms"
-            className={`group flex items-center p-2 rounded-md hover:bg-gray-700 text-white w-full transition-all duration-200 hover:text-red-400 font-medium text-lg ${
-              currentPath.startsWith("/chat-rooms")
-                ? "bg-red-800 text-white"
-                : "text-white hover:bg-gray-700"
-            } ${isSidebarOpen ? "gap-4" : "justify-center"}`}
-          >
-            <span
-              className={`${
-                isSidebarOpen ? "text-xl" : "text-2xl"
-              } flex items-center justify-center`}
-            >
-              <BsChatDots />
-            </span>
-            {isSidebarOpen && (
-              <span
-                className={`transition-all duration-300 transform group-hover:translate-x-3`}
-              >
-                Chat Room
               </span>
             )}
           </Link>

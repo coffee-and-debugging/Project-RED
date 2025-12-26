@@ -25,7 +25,7 @@ const HospiNavBar = () => {
       
       try {
         const response = await axios.get(
-          `http://localhost:8000/api/hospitals/2/`,
+          `http://localhost:8000/api/hospitals/`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -59,7 +59,7 @@ const HospiNavBar = () => {
 
           {/* Notifications & Admin Profile*/}
           <div className="flex items-center gap-6 relative">
-            <div className="relative">
+            {/* <div className="relative">
               <button
                 className="relative text-gray-600 hover:text-red-400 text-2xl cursor-pointer transition-all duration-200"
                 onClick={() => setShowNotifications(!showNotifications)}
@@ -88,7 +88,7 @@ const HospiNavBar = () => {
                   </ul>
                 </div>
               )}
-            </div>
+            </div> */}
 
             {/* Profile */}
             <div className="relative">
@@ -100,22 +100,23 @@ const HospiNavBar = () => {
                 <span
                   className={`hidden md:block font-medium text-gray-700`}
                 >
-                  Admin
+                  Hospital
                 </span>
               </div>
 
-              {showProfileMenu && (
+              {/* {showProfileMenu && (
                 <div
                   className={`absolute right-0 mt-2 w-48 shadow-lg rounded-lg p-2`}
                 >
-                  <button className="flex items-center gap-2 w-full p-2 hover:bg-gray-100 rounded">
+                  {/* <button className="flex items-center gap-2 w-full p-2 hover:bg-gray-100 rounded">
                     <FaCog /> Settings
                   </button>
                   <button className="flex items-center gap-2 w-full p-2 hover:bg-gray-100 rounded">
                     <FaSignOutAlt /> Logout
-                  </button>
-                </div>
+                  </button> */}
+                {/* </div> 
               )}
+              */}
             </div>
           </div>
         </nav>

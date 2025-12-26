@@ -18,11 +18,22 @@ const HosSidebar = ({isOpen, setIsOpen}) => {
   const menus = [
     { name: "Dashboard", icon: <FaTachometerAlt className="text-blue-500"/>, path: "/hospital-dashboard" },
     // { name: "Blood Inventory", icon: <FaTint className="text-rose-600" />, path: "/blood-inventory" },
-    { name: "Donors", icon: <FaUser className="text-green-500"/>, path: "/donor-dashboard" },
-    { name: "Reports", icon: <AiOutlineFileText className="text-blue-500 text-2xl" />, path: "/users-reports"},
-    { name: "Requests", icon: <AiOutlineInbox className="text-red-400 text-2xl"/>, path: "/patient-dashboard" },
-    { name: "Settings", icon: <FaCog className="text-gray-500"/>, path: "/settings" },
+    // { name: "Donors", icon: <FaUser className="text-green-500"/>, path: "/donor-dashboard" },
+    // { name: "Reports", icon: <AiOutlineFileText className="text-blue-500 text-2xl" />, path: "/users-reports"},
+    // { name: "Requests", icon: <AiOutlineInbox className="text-red-400 text-2xl"/>, path: "/patient-dashboard" },
+    // { name: "Settings", icon: <FaCog className="text-gray-500"/>, path: "/settings" },
   ];
+
+  // Logout handler
+  const handleLogout = () =>{
+    localStorage.removeItem("hospitalToken");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("user");
+
+    // clear session storage too
+    sessionStorage.clear();
+    navigate("/hospital-login");
+  }
 
   return (
     <div
@@ -104,7 +115,7 @@ const HosSidebar = ({isOpen, setIsOpen}) => {
       {/* Footer (Logout) */}
       <div className="mt-auto pb-3 border-t border-gray-200">
         <button
-          onClick={() => console.log("Logout clicked")}
+          onClick={handleLogout}
           className={`group flex items-center w-full px-4 py-3 rounded-lg text-gray-700 font-medium transition-all duration-200 hover:bg-red-100 hover:text-red-600 ${isOpen ? "justify-start gap-3" : "justify-center"}`}
         >
           <FaSignOutAlt className="text-xl group-hover:scale-110 transition-transform duration-200" />

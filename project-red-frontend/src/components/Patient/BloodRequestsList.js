@@ -69,7 +69,7 @@ const BloodRequestsList = () => {
         {currentUser?.is_recipient && (
           <Button
             variant="contained"
-            onClick={() => navigate('request-blood')}
+            onClick={() => navigate('../request-blood')}
           >
             New Request
           </Button>
@@ -121,7 +121,7 @@ const BloodRequestsList = () => {
           {currentUser?.is_recipient && (
             <Button
               variant="contained"
-              onClick={() => navigate('request-blood')}
+              onClick={() => navigate('../request-blood')}
               sx={{ mt: 2 }}
             >
               Make Your First Request

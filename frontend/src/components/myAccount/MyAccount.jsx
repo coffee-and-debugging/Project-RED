@@ -10,6 +10,8 @@ import {
 import DonationHistory from "./DonationHistory";
 import RequestHistory from "./RequestHistory";
 import { FiLogOut } from "react-icons/fi";
+import EditProfile from "./EditProfile";
+import { toast } from "react-toastify";
 
 const MyAccount = () => {
   const navigate = useNavigate();
@@ -56,6 +58,37 @@ const MyAccount = () => {
 
     fetchUser();
   }, [navigate]);
+
+  const handleDeleteAccount = async () =>{
+    const confirm = window.confirm(
+      "Are you sure you want to delete your account? This action cannot be undone."
+    );
+    if(!confirm) return;
+
+    try{
+      const token = localStorage.getItem("token");
+      const res = await axios.delete(`http://127.0.0.1.:8000/api/users/${user.id}/`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if(res.status === 204 || res.status === 200){
+      toast.success("Account deleted successfully.");
+      localStorage.removeItem("token");
+      navigate("/login");
+    }
+    } catch(error){
+      console.error(error);
+      toast.error("Failed to delete account. Please try again.");
+    }
+  };
+
+  const handleEditCancel = () => {
+    setActiveMenu("Profile");
+    setSearchParams({ tab: "Profile" });
+  }
 
   const handleMenuClick = (label) => {
     setActiveMenu(label);
@@ -186,7 +219,7 @@ const MyAccount = () => {
             )}
           </h1>
 
-          {activeMenu === "Settings" && <EditProfile user={user} />}
+          {activeMenu === "Settings" && (<EditProfile user={user} onUpdate={(updatedUser) => updatedUser && setUser(updatedUser)} onCancel={handleEditCancel} />)}
           {activeMenu === "Donation History" && (
             <DonationHistory donations={user.donations} />
           )}
@@ -256,26 +289,23 @@ const MyAccount = () => {
                   </tbody>
                 </table>
               </div>
+
+              <div className="flex gap-4 mt-5">
+                <button onClick={() => setActiveMenu("Settings")} className="bg-blue-600 text-white px-4 rounded-md hover:bg-blue-700">Edit Profile</button>
+              
               <li
-                onClick={() => {
-                  const confirmed = window.confirm(
-                    "Are you sure you want to delete your account? This action cannot be undone."
-                  );
-                  if (confirmed) {
-                    alert("Your account has been deleted.");
-                    localStorage.removeItem("token");
-                    navigate("/login");
-                  }
-                }}
+                onClick={handleDeleteAccount}
                 className="flex border w-2/6 md:w-2/11 items-center gap-3 px-4 py-2 mt-5 rounded-md cursor-pointer transition text-red-500 hover:bg-red-500 hover:text-white text-md font-medium"
               >
                 <FaTrash className="text-xl" /> Delete Account
               </li>
+              </div>
             </>
           )}
         </main>
       </div>
     </div>
+    
   );
 };
 
