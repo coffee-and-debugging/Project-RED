@@ -17,16 +17,16 @@ from django.db.models import Q
 import traceback
 from .utils.tokens import hospital_user_token_generator
 from django.utils import timezone
-from .models import User, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification, HospitalUser, DonorHospitalAssignment
+from .models import User, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification, HospitalUser, DonorHospitalAssignment, News, DonationStats
 from .serializers import (
-    UserRegistrationSerializer, UserLoginSerializer, UserSerializer, 
-    HospitalSerializer, BloodRequestSerializer, DonationSerializer, 
-    BloodTestSerializer, BloodTestUpdateSerializer, ChatRoomSerializer, 
+    UserRegistrationSerializer, UserLoginSerializer, UserSerializer,
+    HospitalSerializer, BloodRequestSerializer, DonationSerializer,
+    BloodTestSerializer, BloodTestUpdateSerializer, ChatRoomSerializer,
     MessageSerializer, NotificationSerializer, HospitalRegistrationSerializer,
     HospitalLoginSerializer, HospitalUserSerializer, DonorHospitalAssignmentSerializer,
     PasswordResetConfirmSerializer, PasswordResetRequestSerializer,
     HospitalPasswordResetConfirmSerializer, HospitalPasswordResetRequestSerializer,
-    UserUpdateSerializer
+    UserUpdateSerializer, NewsSerializer, DonationStatsSerializer, DashboardStatsSerializer
 )
 import requests
 from django.conf import settings
@@ -1358,10 +1358,10 @@ def hospital_coordinates(request):
 def create_chatroom_for_donation(request, donation_id):
     try:
         donation = Donation.objects.get(id=donation_id)
-        
+
         # Check if chat room already exists
         chat_room = ChatRoom.objects.filter(donation=donation).first()
-        
+
         if not chat_room:
             chat_room = ChatRoom.objects.create(
                 donor=donation.donor,
@@ -1369,17 +1369,102 @@ def create_chatroom_for_donation(request, donation_id):
                 donation=donation,
                 is_active=True
             )
-        
+
         serializer = ChatRoomSerializer(chat_room)
         return Response(serializer.data)
-        
+
     except Donation.DoesNotExist:
         return Response(
-            {"error": "Donation not found"}, 
+            {"error": "Donation not found"},
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
         return Response(
-            {"error": str(e)}, 
+            {"error": str(e)},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+
+class NewsViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing news and announcements"""
+    queryset = News.objects.filter(is_active=True)
+    serializer_class = NewsSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        queryset = News.objects.filter(is_active=True)
+        category = self.request.query_params.get('category', None)
+        featured = self.request.query_params.get('featured', None)
+        limit = self.request.query_params.get('limit', None)
+
+        if category:
+            queryset = queryset.filter(category=category)
+        if featured:
+            queryset = queryset.filter(is_featured=True)
+        if limit:
+            queryset = queryset[:int(limit)]
+
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def featured(self, request):
+        """Get featured news articles"""
+        featured = News.objects.filter(is_active=True, is_featured=True)[:5]
+        serializer = self.get_serializer(featured, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def categories(self, request):
+        """Get all available categories with counts"""
+        categories = {}
+        for choice in News.CATEGORY_CHOICES:
+            count = News.objects.filter(category=choice[0], is_active=True).count()
+            categories[choice[0]] = {
+                'label': choice[1],
+                'count': count
+            }
+        return Response(categories)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def dashboard_stats(request):
+    """Get aggregated statistics for the dashboard"""
+    from django.db.models import Count
+    from datetime import date, timedelta
+
+    # Calculate stats
+    total_donations = Donation.objects.filter(status='completed').count()
+    total_requests = BloodRequest.objects.count()
+    lives_saved = BloodTest.objects.filter(life_saved=True).count()
+    active_donors = User.objects.filter(is_donor=True, is_active=True).count()
+    pending_requests = BloodRequest.objects.filter(status='pending').count()
+    completed_donations = Donation.objects.filter(status='completed').count()
+
+    # Blood group distribution
+    blood_group_stats = {}
+    for bg in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']:
+        blood_group_stats[bg] = User.objects.filter(blood_group=bg, is_donor=True).count()
+
+    # Recent activity (last 7 days)
+    week_ago = date.today() - timedelta(days=7)
+    recent_donations = Donation.objects.filter(
+        created_at__gte=week_ago
+    ).count()
+    recent_requests = BloodRequest.objects.filter(
+        created_at__gte=week_ago
+    ).count()
+
+    return Response({
+        'total_donations': total_donations,
+        'total_requests': total_requests,
+        'lives_saved': lives_saved,
+        'active_donors': active_donors,
+        'pending_requests': pending_requests,
+        'completed_donations': completed_donations,
+        'blood_group_stats': blood_group_stats,
+        'recent_activity': {
+            'donations': recent_donations,
+            'requests': recent_requests
+        }
+    })

@@ -247,7 +247,6 @@ class Notification(models.Model):
     message = models.TextField()
     is_read = models.BooleanField(default=False)
     related_id = models.UUIDField(blank=True, null=True)
-    message = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
@@ -277,3 +276,51 @@ class DonorHospitalAssignment(models.Model):
     
     def __str__(self):
         return f"{self.donor.username} -> {self.hospital.name} (Donation: {self.donation.id})"
+
+
+class News(models.Model):
+    """News and announcements for the blood donation platform"""
+    CATEGORY_CHOICES = [
+        ('announcement', 'Announcement'),
+        ('health_tip', 'Health Tip'),
+        ('success_story', 'Success Story'),
+        ('event', 'Event'),
+        ('urgent', 'Urgent'),
+        ('campaign', 'Campaign'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=255)
+    summary = models.CharField(max_length=500)
+    content = models.TextField()
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='announcement')
+    image_url = models.URLField(blank=True, null=True)
+    is_featured = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    author = models.CharField(max_length=100, default='Project RED Team')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = 'News'
+        ordering = ['-is_featured', '-created_at']
+
+    def __str__(self):
+        return f"{self.title} ({self.category})"
+
+
+class DonationStats(models.Model):
+    """Aggregated statistics for the dashboard"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    date = models.DateField(unique=True)
+    total_donations = models.PositiveIntegerField(default=0)
+    total_requests = models.PositiveIntegerField(default=0)
+    lives_saved = models.PositiveIntegerField(default=0)
+    active_donors = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name_plural = 'Donation Stats'
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"Stats for {self.date}"

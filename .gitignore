@@ -1,3 +1,4 @@
 .env
 project-red-frontend/node_modules
 project-red-frontend/.gitignore
+venv/

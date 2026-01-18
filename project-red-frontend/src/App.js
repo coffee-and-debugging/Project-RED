@@ -1,9 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Profile from './components/Common/Profile';
-
 
 import HospitalResetPassword from './components/Hospital/HospitalResetPassword';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -21,17 +20,7 @@ import HospitalRegister from './components/Hospital/HospitalRegister';
 import HospitalLogin from './components/Hospital/HospitalLogin';
 import HospitalDashboard from './components/Hospital/HospitalDashboard';
 import ResetPassword from './components/Auth/ResetPassword';
-
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#d32f2f',
-    },
-    secondary: {
-      main: '#ff6659',
-    },
-  },
-});
+import theme from './theme';
 
 const ProtectedRoute = ({ children }) => {
   const { currentUser } = useAuth();
@@ -64,21 +53,13 @@ function App() {
                   </HospitalProtectedRoute>
                 } 
               />
-              <Route 
-                path="/dashboard" 
+              <Route
+                path="/dashboard"
                 element={
                   <ProtectedRoute>
                     <Dashboard />
                   </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/dashboard" 
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                } 
+                }
               />
               <Route 
                 path="/request-blood" 

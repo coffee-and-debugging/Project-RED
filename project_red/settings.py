@@ -36,13 +36,6 @@ CHANNEL_LAYERS = {
     }
 }
 
-# For development (without Redis)
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer"
-    }
-}
-
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',

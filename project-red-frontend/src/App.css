@@ -1,38 +1,384 @@
+/* ============================================
+   Project RED - Blood Donation Platform
+   Global Styles
+   ============================================ */
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* CSS Custom Properties */
+:root {
+  --primary-main: #C62828;
+  --primary-light: #EF5350;
+  --primary-dark: #8E0000;
+  --secondary-main: #FF7043;
+  --success-main: #2E7D32;
+  --warning-main: #F57C00;
+  --error-main: #D32F2F;
+  --info-main: #1976D2;
+  --bg-default: #FAFAFA;
+  --bg-paper: #FFFFFF;
+  --bg-subtle: #FFF5F5;
+  --text-primary: #212121;
+  --text-secondary: #616161;
+  --shadow-card: 0 2px 12px rgba(198, 40, 40, 0.08);
+  --shadow-card-hover: 0 8px 24px rgba(198, 40, 40, 0.15);
+  --transition-fast: 0.2s ease-in-out;
+  --transition-medium: 0.3s ease-in-out;
+  --border-radius-sm: 8px;
+  --border-radius-md: 12px;
+  --border-radius-lg: 16px;
+}
+
+/* Base Styles */
+* {
+  box-sizing: border-box;
+}
+
+/* App Container */
 .App {
-  text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
 }
 
-.App-link {
-  color: #61dafb;
+/* Main Content Area */
+.App main,
+.App > div > main {
+  flex: 1;
+  padding-bottom: 32px;
 }
 
-@keyframes App-logo-spin {
+/* ============================================
+   Animations
+   ============================================ */
+
+/* Fade In Animation */
+@keyframes fadeIn {
   from {
-    transform: rotate(0deg);
+    opacity: 0;
+    transform: translateY(10px);
   }
   to {
-    transform: rotate(360deg);
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Pulse Animation for urgent elements */
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(198, 40, 40, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(198, 40, 40, 0);
+  }
+}
+
+/* Heartbeat Animation for blood/donation related elements */
+@keyframes heartbeat {
+  0%, 100% {
+    transform: scale(1);
+  }
+  14% {
+    transform: scale(1.1);
+  }
+  28% {
+    transform: scale(1);
+  }
+  42% {
+    transform: scale(1.1);
+  }
+  70% {
+    transform: scale(1);
+  }
+}
+
+/* Slide In From Right */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Slide In From Left */
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Scale In Animation */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+
+/* Fade In Animation Class */
+.fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
+/* Pulse Animation Class */
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Heartbeat Animation Class */
+.heartbeat {
+  animation: heartbeat 1.5s ease-in-out infinite;
+}
+
+/* Gradient Text */
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary-main) 0%, var(--primary-dark) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Card Hover Effect */
+.card-hover {
+  transition: var(--transition-medium);
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* ============================================
+   Page Transitions
+   ============================================ */
+
+.page-container {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* ============================================
+   Dashboard Specific Styles
+   ============================================ */
+
+/* Quick Action Cards */
+.quick-action-card {
+  cursor: pointer;
+  transition: var(--transition-medium);
+  position: relative;
+  overflow: hidden;
+}
+
+.quick-action-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--primary-main), var(--secondary-main));
+  transform: scaleX(0);
+  transition: transform var(--transition-medium);
+}
+
+.quick-action-card:hover::before {
+  transform: scaleX(1);
+}
+
+.quick-action-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* Blood Type Badge */
+.blood-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-main) 0%, var(--primary-dark) 100%);
+  color: white;
+  font-weight: 700;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 12px rgba(198, 40, 40, 0.3);
+}
+
+/* ============================================
+   Blood Request Card Styles
+   ============================================ */
+
+.blood-request-card {
+  border-left: 4px solid var(--primary-main);
+  transition: var(--transition-medium);
+}
+
+.blood-request-card:hover {
+  border-left-color: var(--primary-dark);
+  transform: translateX(4px);
+}
+
+.blood-request-card.critical {
+  border-left-color: var(--error-main);
+  background: linear-gradient(90deg, rgba(211, 47, 47, 0.05), transparent);
+}
+
+.blood-request-card.high {
+  border-left-color: var(--warning-main);
+  background: linear-gradient(90deg, rgba(245, 124, 0, 0.05), transparent);
+}
+
+/* ============================================
+   Notification Styles
+   ============================================ */
+
+.notification-item {
+  transition: var(--transition-fast);
+  border-radius: var(--border-radius-sm);
+}
+
+.notification-item.unread {
+  background: linear-gradient(90deg, rgba(198, 40, 40, 0.08), transparent);
+  border-left: 3px solid var(--primary-main);
+}
+
+.notification-item:hover {
+  background-color: rgba(198, 40, 40, 0.04);
+}
+
+/* ============================================
+   Chat Styles
+   ============================================ */
+
+.chat-message {
+  animation: slideInRight 0.3s ease-out;
+  max-width: 70%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  margin-bottom: 8px;
+}
+
+.chat-message.sent {
+  background: linear-gradient(135deg, var(--primary-main) 0%, var(--primary-dark) 100%);
+  color: white;
+  margin-left: auto;
+  border-bottom-right-radius: 4px;
+  animation: slideInRight 0.3s ease-out;
+}
+
+.chat-message.received {
+  background: var(--bg-paper);
+  border: 1px solid var(--bg-default);
+  margin-right: auto;
+  border-bottom-left-radius: 4px;
+  animation: slideInLeft 0.3s ease-out;
+}
+
+/* ============================================
+   Form Styles
+   ============================================ */
+
+.form-container {
+  animation: scaleIn 0.4s ease-out;
+}
+
+/* ============================================
+   Status Indicators
+   ============================================ */
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.active {
+  background-color: var(--success-main);
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.2);
+}
+
+.status-dot.pending {
+  background-color: var(--warning-main);
+  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.2);
+}
+
+.status-dot.urgent {
+  background-color: var(--error-main);
+  animation: pulse 1.5s infinite;
+}
+
+/* ============================================
+   Loading States
+   ============================================ */
+
+.skeleton-loading {
+  background: linear-gradient(90deg, var(--bg-default) 25%, var(--bg-paper) 50%, var(--bg-default) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* ============================================
+   Responsive Adjustments
+   ============================================ */
+
+@media (max-width: 600px) {
+  .quick-action-card {
+    padding: 16px;
+  }
+
+  .blood-type-badge {
+    min-width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
+
+  .chat-message {
+    max-width: 85%;
+  }
+}
+
+/* ============================================
+   Print Styles
+   ============================================ */
+
+@media print {
+  .App {
+    background: white;
+  }
+
+  .no-print {
+    display: none !important;
   }
 }

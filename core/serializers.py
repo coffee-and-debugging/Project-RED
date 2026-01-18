@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
-from .models import User, DonorHospitalAssignment, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification, HospitalUser
+from .models import User, DonorHospitalAssignment, Hospital, BloodRequest, Donation, BloodTest, ChatRoom, Message, Notification, HospitalUser, News, DonationStats
 import requests
 from django.conf import settings
 import json
@@ -334,3 +334,51 @@ class HospitalPasswordResetConfirmSerializer(serializers.Serializer):
         if data['new_password'] != data['confirm_password']:
             raise serializers.ValidationError({"password": ["Passwords don't match"]})
         return data
+
+
+class NewsSerializer(serializers.ModelSerializer):
+    time_ago = serializers.SerializerMethodField()
+
+    class Meta:
+        model = News
+        fields = ['id', 'title', 'summary', 'content', 'category', 'image_url',
+                  'is_featured', 'is_active', 'author', 'created_at', 'updated_at', 'time_ago']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_time_ago(self, obj):
+        from django.utils import timezone
+        from datetime import timedelta
+
+        now = timezone.now()
+        diff = now - obj.created_at
+
+        if diff < timedelta(minutes=1):
+            return "Just now"
+        elif diff < timedelta(hours=1):
+            minutes = int(diff.total_seconds() / 60)
+            return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+        elif diff < timedelta(days=1):
+            hours = int(diff.total_seconds() / 3600)
+            return f"{hours} hour{'s' if hours > 1 else ''} ago"
+        elif diff < timedelta(days=7):
+            days = diff.days
+            return f"{days} day{'s' if days > 1 else ''} ago"
+        else:
+            return obj.created_at.strftime("%B %d, %Y")
+
+
+class DonationStatsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DonationStats
+        fields = '__all__'
+
+
+class DashboardStatsSerializer(serializers.Serializer):
+    """Serializer for aggregated dashboard statistics"""
+    total_donations = serializers.IntegerField()
+    total_requests = serializers.IntegerField()
+    lives_saved = serializers.IntegerField()
+    active_donors = serializers.IntegerField()
+    pending_requests = serializers.IntegerField()
+    completed_donations = serializers.IntegerField()
+    blood_group_stats = serializers.DictField()

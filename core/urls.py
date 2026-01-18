@@ -7,7 +7,7 @@ from .views import (
     DonationViewSet, BloodTestViewSet, ChatRoomViewSet, NotificationViewSet,
     complete_donation, available_blood_requests, CustomTokenObtainPairView,
     create_chatroom_for_donation, HospitalAuthViewSet, HospitalDashboardViewSet,
-    DonorHospitalAssignmentViewSet  # Import the new DonorHospitalAssignmentViewSet
+    DonorHospitalAssignmentViewSet, NewsViewSet, dashboard_stats
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -25,6 +25,7 @@ router.register(r'hospital-dashboard', HospitalDashboardViewSet, basename='hospi
 
 # Register the new DonorHospitalAssignment endpoint
 router.register(r'donor-hospital-assignments', DonorHospitalAssignmentViewSet, basename='donorhospitalassignment')
+router.register(r'news', NewsViewSet, basename='news')
 
 urlpatterns = [
     path('api/', include(router.urls)),
@@ -60,6 +61,5 @@ urlpatterns = [
     path('api/users/profile/', UserViewSet.as_view({'get': 'profile'}), name='user-profile'),
     path('api/users/<uuid:pk>/update_profile/', UserViewSet.as_view({'put': 'update_profile', 'patch': 'update_profile'}), name='user-update-profile'),
     path('api/users/<uuid:pk>/change_password/', UserViewSet.as_view({'post': 'change_password'}), name='user-change-password'),
-    
-    
+    path('api/dashboard-stats/', dashboard_stats, name='dashboard-stats'),
 ]
